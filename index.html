@@ -147,7 +147,9 @@
   .tabbar button[aria-current="page"] { color: var(--brand-2); background: var(--brand-soft); }
 
   /* desk */
-  #deskView { display: grid; gap: 14px; padding-top: 14px; }
+  #deskView { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; padding-top: 14px; }
+  #deskView > *, #deskView .card > * { min-width: 0; }
+  #deskView .mline > * { min-width: 0; }
   #deskView .card { margin: 0; display: grid; gap: 10px; }
   #deskView h2 { font-size: .75rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
   #deskView label { display: block; font-size: .82rem; font-weight: 600; color: var(--muted); margin-bottom: -4px; }
@@ -203,9 +205,13 @@
   .plain { margin: 0; padding-left: 18px; }
 
   /* full-size screenshot */
-  #lightbox { position: fixed; inset: 0; z-index: 20; background: #0b0f0d; color: #fff; display: grid; grid-template-rows: auto 1fr auto;
+  #lightbox { position: fixed; inset: 0; z-index: 20; background: #0b0f0d; color: #fff; display: grid; grid-template-rows: auto 1fr auto auto;
     padding: calc(env(safe-area-inset-top) + 10px) max(10px, env(safe-area-inset-right)) calc(env(safe-area-inset-bottom) + 12px) max(10px, env(safe-area-inset-left)); gap: 10px; }
-  .lb-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-weight: 600; font-size: .9rem; }
+  #lightbox { grid-template-columns: minmax(0, 1fr); }
+  .lb-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-weight: 600; font-size: .9rem; min-width: 0; }
+  .lb-top span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lb-img img.zoomed { width: auto; max-width: none; }
+  .lb-tip { font-size: .75rem; opacity: .7; text-align: center; margin: -4px 0 0; }
   .lb-top button { border: 0; border-radius: 10px; background: #fff; color: #111; font-weight: 700; padding: 9px 16px; flex: none; }
   .lb-img { overflow: auto; min-height: 0; -webkit-overflow-scrolling: touch; border-radius: 8px; background: #1b211e; }
   .lb-img img { display: block; width: 100%; height: auto; }
@@ -338,6 +344,7 @@
 <div id="lightbox" class="hidden" role="dialog" aria-modal="true" aria-label="Screenshot">
   <div class="lb-top"><span id="lbCaption"></span><button id="lbClose">Close</button></div>
   <div class="lb-img"><img id="lbImg" alt=""></div>
+  <p class="lb-tip">Tap the image to zoom in; drag to move around</p>
   <div class="lb-notes">
     <div class="lb-hi"><span>Highlighted</span><p id="lbHi"></p></div>
     <div class="lb-found"><span>What I found</span><p id="lbFound"></p></div>
@@ -345,7 +352,7 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="app.js?v=7"></script>
-<script src="desk.js?v=7"></script>
+<script src="app.js?v=8"></script>
+<script src="desk.js?v=8"></script>
 </body>
 </html>

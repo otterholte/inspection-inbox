@@ -68,6 +68,8 @@ function wireEvidence(root) {
 function openLightbox(e) {
   const lb = $('lightbox');
   $('lbImg').removeAttribute('src');
+  $('lbImg').classList.remove('zoomed');
+  $('lbImg').onclick = () => $('lbImg').classList.toggle('zoomed');
   loadImage(e.img).then(u => { $('lbImg').src = u; });
   $('lbCaption').textContent = e.caption || '';
   $('lbHi').textContent = e.highlight || 'No highlight on this screenshot.';
