@@ -136,13 +136,92 @@
   #lock button { width: 100%; margin-top: 14px; min-height: 52px; border: 0; border-radius: 14px; background: #fff; color: var(--brand); font-weight: 700; font-size: 1rem; }
   #lockMsg { min-height: 1.4em; margin-top: 12px !important; color: #ffd2cc; opacity: 1 !important; }
   body.locked main, body.locked .bar { display: none; }
+  /* tabs */
+  body:not(.locked) main { padding-bottom: calc(env(safe-area-inset-bottom) + 96px); }
+  .bar-t { min-width: 0; } .bar-t h1 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tabbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; display: grid; grid-template-columns: 1fr 1fr;
+    background: var(--card); border-top: 1px solid var(--line); padding: 6px max(12px, env(safe-area-inset-left)) calc(env(safe-area-inset-bottom) + 6px); }
+  body.locked .tabbar { display: none; }
+  .tabbar button { border: 0; background: none; display: grid; justify-items: center; gap: 2px; font-size: .78rem; font-weight: 700; color: var(--muted); padding: 6px 0; border-radius: 12px; }
+  .tabbar svg { width: 24px; height: 24px; }
+  .tabbar button[aria-current="page"] { color: var(--brand-2); background: var(--brand-soft); }
+
+  /* desk */
+  #deskView { display: grid; gap: 14px; padding-top: 14px; }
+  #deskView .card { margin: 0; display: grid; gap: 10px; }
+  #deskView h2 { font-size: .75rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  #deskView label { display: block; font-size: .82rem; font-weight: 600; color: var(--muted); margin-bottom: -4px; }
+  #deskView input[type=text], #deskView input[type=date], #deskView input[type=time], #deskView input[type=file], #deskView textarea {
+    width: 100%; border: 1px solid var(--line); background: var(--bg); border-radius: 10px; padding: 10px 12px; }
+  #deskView .primary { margin-top: 0; background: var(--brand-2); }
+  #deskView .primary:disabled { opacity: .45; }
+  #deskView .sec { padding: 0 14px; }
+  .backbtn { justify-self: start; min-height: 40px; }
+  .seg-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+  .seg-tabs button { border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 7px 14px; font-weight: 700; font-size: .85rem; }
+  .seg-tabs button[aria-pressed="true"] { background: var(--text); color: var(--bg); border-color: var(--text); }
+  .item { display: grid; gap: 6px; width: 100%; text-align: left; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 14px 16px; box-shadow: var(--shadow); }
+  .item .top { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+  .item strong { font-size: 1.05rem; } .meta { color: var(--muted); font-size: .85rem; }
+  .chipsrow { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip, .status { font-size: .75rem; font-weight: 700; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
+  .Yes, .st-done { background: var(--ok-soft); color: var(--ok); } .No { background: var(--err-soft); color: var(--err); }
+  .NA { background: var(--bg); color: var(--muted); border: 1px solid var(--line); }
+  .st-open { background: var(--scan-soft); color: var(--scan); } .st-wait { background: var(--note-soft); color: var(--note); }
+  .banner, .waiting { background: var(--note-soft); color: var(--note); border-radius: 12px; padding: 10px 12px; font-size: .88rem; }
+  .doneMsg { background: var(--ok-soft); color: var(--ok); border-radius: 12px; padding: 10px 12px; font-size: .88rem; }
+  .warnbox { background: var(--err-soft); color: var(--err); border-radius: 12px; padding: 10px 12px; margin: 0; }
+  .progress { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  .progress li { display: grid; grid-template-columns: 26px 1fr; gap: 10px; align-items: start; }
+  .progress .mk { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-size: .8rem; font-weight: 700; border: 2px solid var(--line); color: var(--muted); }
+  .progress .done .mk { background: var(--ok); border-color: var(--ok); color: var(--card); }
+  .progress .wait .mk { border-color: var(--note); color: var(--note); } .progress .now .mk { border-color: var(--brand-2); color: var(--brand-2); }
+  .progress b { display: block; font-weight: 600; } .progress small { color: var(--muted); }
+  .pilltag { font-size: .7rem; text-transform: none; letter-spacing: 0; background: var(--bg); border: 1px solid var(--line); border-radius: 999px; padding: 2px 8px; }
+  .src { font-size: .72rem; font-weight: 700; color: var(--muted); letter-spacing: .04em; text-transform: uppercase; }
+  .mline { display: grid; grid-template-columns: 1fr auto auto; gap: 6px; align-items: center; }
+  .mline + .mline { margin-top: 8px; }
+  .mline.rec { grid-template-columns: 1fr 34% auto; }
+  .nl { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .nl button { border: 0; background: var(--bg); padding: 9px 11px; font-weight: 700; font-size: .82rem; color: var(--muted); }
+  .nl button[aria-pressed="true"].now { background: var(--rec-soft); color: var(--rec); }
+  .nl button[aria-pressed="true"].later { background: var(--scan-soft); color: var(--scan); }
+  .x { border: 0; background: none; color: var(--muted); font-size: 1.05rem; padding: 6px 8px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .ev { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; }
+  .ev:empty { display: none; }
+  .ev button { flex: none; width: 118px; padding: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); overflow: hidden; text-align: left; }
+  .ev img { display: block; width: 118px; height: 76px; object-fit: cover; object-position: top; background: var(--line); }
+  .ev span { display: block; font-size: .7rem; line-height: 1.25; color: var(--muted); padding: 4px 6px 6px; }
+  .audit { display: grid; gap: 6px; }
+  .audit div { display: flex; justify-content: space-between; gap: 12px; padding: 9px 12px; border-radius: 10px; font-size: .9rem; }
+  .audit strong { flex: none; }
+  pre.out { white-space: pre-wrap; word-wrap: break-word; font: 14px/1.55 system-ui, -apple-system, sans-serif; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin: 0; }
+  .saved { font-size: .75rem; color: var(--muted); margin: 0; min-height: 1.1em; }
+  .logitem { display: grid; gap: 6px; padding-top: 10px; border-top: 1px solid var(--line); }
+  .logitem:first-of-type { border-top: 0; padding-top: 0; }
+  .plain { margin: 0; padding-left: 18px; }
+
+  /* full-size screenshot */
+  #lightbox { position: fixed; inset: 0; z-index: 20; background: #0b0f0d; color: #fff; display: grid; grid-template-rows: auto 1fr auto;
+    padding: calc(env(safe-area-inset-top) + 10px) max(10px, env(safe-area-inset-right)) calc(env(safe-area-inset-bottom) + 12px) max(10px, env(safe-area-inset-left)); gap: 10px; }
+  .lb-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-weight: 600; font-size: .9rem; }
+  .lb-top button { border: 0; border-radius: 10px; background: #fff; color: #111; font-weight: 700; padding: 9px 16px; flex: none; }
+  .lb-img { overflow: auto; min-height: 0; -webkit-overflow-scrolling: touch; border-radius: 8px; background: #1b211e; }
+  .lb-img img { display: block; width: 100%; height: auto; }
+  .lb-notes { display: grid; gap: 8px; }
+  .lb-notes > div { border-radius: 12px; padding: 10px 12px; }
+  .lb-notes span { display: block; font-size: .7rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 2px; }
+  .lb-notes p { margin: 0; font-size: .95rem; line-height: 1.4; }
+  .lb-hi { background: #fff3a3; color: #4a3c00; } .lb-found { background: #e3efe8; color: #14351f; }
+
 </style>
 </head>
 <body class="locked">
 <div id="lock">
   <form id="lockForm">
     <img src="icons/icon-192.png" alt="">
-    <h1>Inspection Inbox</h1>
+    <h1>Inspections</h1>
     <p>Enter your access code</p>
     <input id="pin" type="password" inputmode="numeric" autocomplete="off" maxlength="8" aria-label="Access code" autofocus>
     <button type="submit">Unlock</button>
@@ -153,12 +232,12 @@
 <header class="bar">
   <div class="bar-in">
     <img src="icons/icon-192.png" alt="">
-    <div><h1>Inspection Inbox</h1><p>Saves to Drive · 2026/27 Inspections</p></div>
+    <div class="bar-t"><h1 id="barTitle">Inspection Inbox</h1><p id="barSub">Saves to Drive · 2026/27 Inspections</p></div>
     <div class="conn"><span class="dot" id="connDot"></span><span id="connText">Checking…</span></div>
   </div>
 </header>
 
-<main>
+<main id="inboxView">
   <div class="eyebrow">Step 1</div>
   <section class="card prop" id="propCard">
     <label for="property">Which property?</label>
@@ -245,7 +324,28 @@
   </section>
 </main>
 
+<main id="deskView" class="hidden"></main>
+
+<nav class="tabbar" aria-label="Sections">
+  <button data-tab="inbox" aria-current="page">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3M7 8l5-5 5 5"/><path d="M4 14v5a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5"/></svg>
+    Inbox</button>
+  <button data-tab="desk" aria-current="false">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4h6v3H9zM9 12l2 2 4-4"/></svg>
+    Desk</button>
+</nav>
+
+<div id="lightbox" class="hidden" role="dialog" aria-modal="true" aria-label="Screenshot">
+  <div class="lb-top"><span id="lbCaption"></span><button id="lbClose">Close</button></div>
+  <div class="lb-img"><img id="lbImg" alt=""></div>
+  <div class="lb-notes">
+    <div class="lb-hi"><span>Highlighted</span><p id="lbHi"></p></div>
+    <div class="lb-found"><span>What I found</span><p id="lbFound"></p></div>
+  </div>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="app.js?v=6"></script>
+<script src="app.js?v=7"></script>
+<script src="desk.js?v=7"></script>
 </body>
 </html>

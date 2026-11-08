@@ -3,8 +3,8 @@ const KEY = 'inspection-inbox-v1';
 
 // Upload endpoint (Apps Script web app). Useless without the key, which comes from the access code.
 const ENDPOINT = 'https://script.google.com/macros/s/AKfycby9yLYqCNJYxrktB-x-_Re82PkP21J5fhEfXCqy_h7Q8cQVMhmX7lfifYI_TH6t7QL5/exec';
-// Only the SHA-256 of the access code lives in this public repo.
-const PIN_HASH = 'b4a906ff5d63dd73f46a93d31d43b493da0c06d4e1e071d84584e3a1d550feae';
+// The access code is checked only by the server, which locks out after repeated wrong codes.
+// Nothing in this public file can be used to work the code out offline.
 let uploadKey = null;
 
 async function sha256(text) {
@@ -24,29 +24,42 @@ function saveState(patch) {
 let state = loadState();
 
 // ---- access code, asked each time the app is opened ----
-async function unlock(pin) {
-  uploadKey = await sha256('inspection-inbox-upload:' + pin);
-  try { sessionStorage.setItem(KEY + '-pin', pin); } catch {}
+async function tryKey(key) {
+  try {
+    const r = await fetch(`${ENDPOINT}?token=${key}`).then(r => r.json());
+    return r.ok ? { ok: true } : { ok: false, error: r.error };
+  } catch { return { ok: false, error: 'offline' }; }
+}
+function unlock(key) {
+  uploadKey = key;
+  try { sessionStorage.setItem(KEY + '-key', key); } catch {}
   document.body.classList.remove('locked');
   $('lock').remove();
+  setConn(true, 'Connected');
   start();
+  window.dispatchEvent(new Event('unlocked'));
 }
 (async () => {
   let saved = null;
-  try { saved = sessionStorage.getItem(KEY + '-pin'); } catch {}
-  if (saved && await sha256(saved) === PIN_HASH) unlock(saved);
+  try { saved = sessionStorage.getItem(KEY + '-key'); } catch {}
+  if (saved && (await tryKey(saved)).ok) unlock(saved);
 })();
 $('lockForm').onsubmit = async e => {
   e.preventDefault();
-  const pin = $('pin').value;
-  if (await sha256(pin) === PIN_HASH) unlock(pin);
-  else { $('lockMsg').textContent = 'Wrong code. Try again.'; $('pin').value = ''; }
+  const btn = $('lockForm').querySelector('button');
+  btn.disabled = true; $('lockMsg').textContent = 'Checking…';
+  const key = await sha256('inspection-inbox-upload:' + $('pin').value);
+  const r = await tryKey(key);
+  btn.disabled = false;
+  if (r.ok) return unlock(key);
+  $('pin').value = '';
+  $('lockMsg').textContent = r.error === 'offline' ? 'No connection. Try again when you have signal.'
+    : r.error === 'Bad token' ? 'Wrong code. Try again.' : r.error;
 };
 
 function start() {
   $('property').value = state.lastProperty || '';
   renderRecent();
-  checkConnection();
 }
 async function checkConnection() {
   try {
