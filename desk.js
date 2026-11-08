@@ -302,8 +302,11 @@ function renderDetail(keepScroll) {
     <section class="card"><h2>Wrap up</h2>
       ${d.checklistPdf ? `<button class="sec" id="pdfBtn">Open the filled checklist (PDF)</button>` : ''}
       ${(d.checklistPages || []).length ? evHtml(d.checklistPages) : ''}
-      ${reqBlock('checklist', st.checklist ? 'Update the checklist with what\'s changed' : 'Fill out the 2026 checklist')}
-      ${st.checklist ? '<p class="hint">Updating keeps the filled checklist and only marks what\'s changed since last time.</p>' : ''}
+      ${d.checklistSpec
+        ? `${d.requests?.checklist?.state === 'done' && d.requests.checklist.note ? `<div class="doneMsg">${esc(d.requests.checklist.note)}</div>` : ''}
+           <button class="primary" id="ckNow">${st.checklist ? 'Update the checklist now' : 'Fill out the checklist now'}</button>
+           <p class="hint" id="ckMsg">Takes about 10 seconds. It keeps everything from your inspection and marks what's done since, like the email and upload lines.</p>`
+        : reqBlock('checklist', 'Fill out the 2026 checklist')}
       ${reqBlock('docs', st.docs ? 'Upload the latest checklist again' : 'Upload the checklist to AppFolio', !!st.checklist)}
       <p class="hint">Claude uploads it to the tenant page, and on the property page puts it and the Z Inspector report in the Inspections folder, then shows screenshots proving each one landed.</p>
       <button class="primary p-done" id="sentBtn">${st.sent ? '✓ Completed · reopen' : 'Mark completed'}</button>
@@ -324,19 +327,29 @@ function recRow([t, tf]) {
     <input type="text" class="tf" list="tfs" value="${esc(tf)}" placeholder="When" aria-label="When">
     <button type="button" class="x" aria-label="Remove">✕</button></div>`;
 }
+// Immediate feedback: the save to Google takes a couple of seconds, so show it's working right away.
+function busy(btn, label) { if (btn) { btn.disabled = true; btn.dataset.label = btn.textContent; btn.textContent = label; } }
+function unbusy(btn) { if (btn) { btn.disabled = false; btn.textContent = btn.dataset.label || btn.textContent; } }
+async function runChecklist(btn) {
+  busy(btn, 'Updating…');
+  try { await updateChecklistNow(t => { if ($('ckMsg')) $('ckMsg').textContent = t; }); renderDetail(true); }
+  catch (e) { if ($('ckMsg')) $('ckMsg').textContent = 'Couldn\'t update it: ' + e.message; unbusy(btn); }
+}
 function wireDetail() {
   $('deskBack').onclick = () => history.back();
+  if ($('ckNow')) $('ckNow').onclick = () => runChecklist($('ckNow'));
   // Marking the email done by hand also asks Claude to bring the checklist up to date.
-  const markEmail = async sent => {
+  const markEmail = async (sent, btn) => {
+    busy(btn, 'Saving…');
     await save();
     const steps = { ...(D.current.data.steps || {}), email: true, ...(sent ? { sent: true } : {}) };
     const requests = { ...(D.current.data.requests || {}), email: { state: 'done', at: new Date().toISOString(), note: sent ? 'You sent the email yourself.' : 'You drafted the email yourself.' } };
-    if (steps.checklist) requests.checklist = { state: 'queued', at: new Date().toISOString() };
     await patch({ steps, requests });
     renderDetail(true);
+    if (D.current.data.checklistSpec && $('ckNow')) { $('ckNow').scrollIntoView({ block: 'center' }); runChecklist($('ckNow')); }
   };
-  if ($('iDrafted')) $('iDrafted').onclick = () => markEmail(false);
-  if ($('iSent')) $('iSent').onclick = () => markEmail(true);
+  if ($('iDrafted')) $('iDrafted').onclick = () => markEmail(false, $('iDrafted'));
+  if ($('iSent')) $('iSent').onclick = () => markEmail(true, $('iSent'));
   if ($('bookCall')) $('bookCall').onclick = async () => {
     $('bookCall').disabled = true; $('bookCall').textContent = 'Booking…'; $('callMsg').textContent = '';
     try {
@@ -364,7 +377,7 @@ function wireDetail() {
     $('pdfBtn').textContent = 'Open the filled checklist (PDF)';
   };
   wireEvidence(deskEl());
-  deskEl().querySelectorAll('[data-req]').forEach(b => b.onclick = () => queueReq(b.dataset.req));
+  deskEl().querySelectorAll('[data-req]').forEach(b => b.onclick = () => { busy(b, 'Sending…'); queueReq(b.dataset.req); });
   if (!D.current.data.steps?.processed) return;
   ['review', 'tenant', 'owner', 'goAhead', 'callDate', 'callTime', 'altDate'].forEach(k => $(k).addEventListener('input', changed));
   $('items').addEventListener('input', changed);
@@ -390,8 +403,8 @@ function wireDetail() {
     changed();
   });
 
-  $('zDone').onclick = async () => { await save(); await patch({ steps: { ...D.current.data.steps, zinspector: true } }); queueReq('link'); };
-  $('sentBtn').onclick = async () => { await save(); await patch({ steps: { ...D.current.data.steps, sent: !D.current.data.steps?.sent } }); renderDetail(true); };
+  $('zDone').onclick = async () => { busy($('zDone'), 'Saving…'); await save(); await patch({ steps: { ...D.current.data.steps, zinspector: true } }); queueReq('link'); };
+  $('sentBtn').onclick = async () => { busy($('sentBtn'), 'Saving…'); await save(); await patch({ steps: { ...D.current.data.steps, sent: !D.current.data.steps?.sent } }); renderDetail(true); };
   renderOutputs();
 }
 
