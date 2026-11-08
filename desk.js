@@ -9,8 +9,6 @@ const REQUESTS = {
   email: 'Open AppFolio and draft the owner email (not sent)',
   checklist: 'Fill out and initial the 2026 checklist PDF',
   docs: 'Upload the checklist to AppFolio (tenant + property, Inspections folder)',
-  editEmail: 'Make your change to the owner email',
-  editZ: 'Make your change to the Z Inspector notes',
 };
 const STEPS = [
   ['processed', 'Checklist processed and AppFolio audited', 'process'],
@@ -253,7 +251,6 @@ function renderDetail(keepScroll) {
       <p class="hint">Tap the text to edit it. Copy it into the inspection's notes in Z Inspector, submit it, then tap the green button.</p>
       <textarea class="edit-box" id="zText" aria-label="Z Inspector notes"></textarea>
       <p class="hint" id="zEdited"></p>
-      ${askBlock('editZ', 'zAsk')}
       <button class="sec" id="copyZ">Copy notes</button>
       <button class="primary" id="zDone" ${st.zinspector ? 'disabled' : ''}>${st.zinspector ? '✓ In Z Inspector and submitted' : 'It\'s in Z Inspector and submitted'}</button>
       ${st.zinspector ? reqBlock('link', st.link ? 'Find the link again' : 'Get the Z Inspector link') : ''}
@@ -267,15 +264,16 @@ function renderDetail(keepScroll) {
         <div><label for="callTime">Time</label><input type="time" id="callTime" value="${esc(d.call?.time || '10:00')}"></div>
       </div>
       <label for="altDate">Also free (Friday)</label><input type="date" id="altDate" value="${esc(d.call?.alt || nextWeekday(5, 3))}">
-      <p class="hint">Claude adds a tentative, orange 30-minute event to your work calendar with the owner's name and phone number, moving to the next free slot between 10 and 4 if this one is taken.</p>
-      ${reqBlock('call', d.call?.booked ? 'Move it to this time' : 'Sounds good, add it to my calendar')}
+      <p class="hint">Books right away: a 30-minute tentative invite on your work calendar with the owner's name and phone number. If this time is taken it moves to the next free half hour between 10 and 4.</p>
+      ${d.requests?.call?.state === 'done' && d.requests.call.note ? `<div class="doneMsg">${esc(d.requests.call.note)}</div>` : ''}
+      <button class="primary" id="bookCall">${d.call?.booked ? 'Move it to this time' : 'Sounds good, add it to my calendar'}</button>
+      <p class="hint" id="callMsg"></p>
     </section>
 
     <section class="card"><h2>Email to the owner</h2>
       <label for="owner">Greeting</label><input type="text" id="owner" value="${esc(f.owner)}">
       <textarea class="edit-box" id="emailText" aria-label="Email to the owner" style="min-height:320px"></textarea>
       <p class="hint" id="emailEdited"></p>
-      ${askBlock('editEmail', 'emailAsk')}
       <button class="sec" id="copyBody">Copy message</button>
       ${reqBlock('email', st.email ? 'Draft it again in AppFolio' : 'Draft it in AppFolio', !!st.link)}
       ${st.link ? '' : '<p class="hint">Available once the Z Inspector link is in.</p>'}
@@ -302,49 +300,6 @@ function renderDetail(keepScroll) {
   wireDetail();
   if (keepScroll) window.scrollTo(0, y);
 }
-// "Tell Claude a change": speak or type an instruction; the runner rewrites the text.
-function askBlock(key, id) {
-  const r = (D.current.data.requests || {})[key];
-  if (r?.state === 'queued') return `<div class="waiting">Waiting for Claude to make your change: “${esc(r.instruction)}”. ${RUN_HINT}</div>`;
-  return `${r?.state === 'done' && r.note ? `<div class="doneMsg">${esc(r.note)}</div>` : ''}
-    ${r?.state === 'failed' ? `<div class="waiting">Claude couldn't make that change${r.note ? ': ' + esc(r.note) : ''}.</div>` : ''}
-    <div class="ask">
-      <div class="row2"><button class="sec mic" type="button" data-mic="${id}">🎤 Speak</button>
-        <textarea id="${id}" rows="2" placeholder="Tell Claude a change, e.g. “make it shorter and mention the gutters”"></textarea></div>
-      <button class="sec" type="button" data-ask="${key}" data-src="${id}">Send change to Claude</button>
-    </div>`;
-}
-const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-let listening = null;
-function wireMics() {
-  document.querySelectorAll('[data-mic]').forEach(btn => {
-    if (!SR) { btn.remove(); return; }
-    btn.onclick = () => {
-      if (listening) { listening.stop(); return; }
-      const box = $(btn.dataset.mic), base = box.value ? box.value.trim() + ' ' : '';
-      const rec = new SR(); rec.lang = 'en-US'; rec.interimResults = true; rec.continuous = true;
-      let final = '';
-      rec.onresult = e => {
-        let interim = '';
-        for (let i = e.resultIndex; i < e.results.length; i++) (e.results[i].isFinal ? (final += e.results[i][0].transcript) : (interim += e.results[i][0].transcript));
-        box.value = base + final + interim;
-      };
-      rec.onend = () => { btn.classList.remove('on'); btn.textContent = '🎤 Speak'; listening = null; };
-      rec.onerror = () => rec.onend();
-      try { rec.start(); listening = rec; btn.classList.add('on'); btn.textContent = '■ Stop'; } catch {}
-    };
-  });
-  document.querySelectorAll('[data-ask]').forEach(btn => btn.onclick = async () => {
-    const instruction = $(btn.dataset.src).value.trim();
-    if (!instruction) { $(btn.dataset.src).focus(); return; }
-    if (listening) listening.stop();
-    await save();
-    const key = btn.dataset.ask, target = key === 'editEmail' ? 'email' : 'z';
-    const text = target === 'email' ? $('emailText').value : $('zText').value;
-    await patch({ requests: { ...(D.current.data.requests || {}), [key]: { state: 'queued', at: new Date().toISOString(), instruction, text } } });
-    renderDetail(true);
-  });
-}
 function itemRow(item) {
   const text = item?.text ?? '', when = item?.when === 'later' ? 'later' : 'now';
   return `<div class="mline it" data-when="${when}">
@@ -359,6 +314,20 @@ function recRow([t, tf]) {
 }
 function wireDetail() {
   $('deskBack').onclick = () => history.back();
+  if ($('bookCall')) $('bookCall').onclick = async () => {
+    $('bookCall').disabled = true; $('bookCall').textContent = 'Booking…'; $('callMsg').textContent = '';
+    try {
+      await save();
+      await api('desk.bookCall', { slug: D.current.id });
+      D.current.data = (await api('desk.get', { slug: D.current.id })).doc;
+      renderDetail(true);
+    } catch (e) {
+      $('callMsg').textContent = /authoriz|permission/i.test(e.message)
+        ? 'The Google script needs your OK to use your calendar. Open it in Google Apps Script and run doGet once.'
+        : 'Couldn\'t book it: ' + e.message;
+      $('bookCall').disabled = false; $('bookCall').textContent = 'Try again';
+    }
+  };
   if ($('logAll')) $('logAll').onclick = () => {
     const older = deskEl().querySelectorAll('[data-older]'), showing = !older[0].hidden;
     older.forEach(el => { el.hidden = showing; });
@@ -396,7 +365,7 @@ function wireDetail() {
     D.current.data.overrides = { ...(D.current.data.overrides || {}), [key]: $(box).value };
     changed();
   });
-  wireMics();
+
   $('zDone').onclick = async () => { await save(); await patch({ steps: { ...D.current.data.steps, zinspector: true } }); queueReq('link'); };
   $('sentBtn').onclick = async () => { await save(); await patch({ steps: { ...D.current.data.steps, sent: !D.current.data.steps?.sent } }); renderDetail(true); };
   renderOutputs();

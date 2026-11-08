@@ -9,6 +9,7 @@
  *   UPLOAD_TOKEN    long token for Claude Code on the PC
  *   APP_TOKEN       token the phone app derives from its access code
  *   ROOT_FOLDER_ID  Drive folder to save into (default: a folder named "Inspections Inbox")
+ *   WORK_EMAIL      address invited to follow-up calls (Eli's work calendar)
  * Deploy as a Web app, Execute as: Me, Who has access: Anyone.
  *
  * The app's access code is short, so wrong tokens are rate limited: after MAX_FAILURES
@@ -36,6 +37,7 @@ function doPost(e) {
       case 'desk.update': return json_({ ok: true, version: deskWrite_(body.slug, body.patch, body.ifVersion, true) });
       case 'desk.image': return json_({ ok: true, ...imageGet_(body.id) });
       case 'desk.putImage': return json_({ ok: true, id: imagePut_(body) });
+      case 'desk.bookCall': return json_({ ok: true, ...bookCall_(body.slug) });
       default: return json_({ ok: true, ...upload_(body) });
     }
   } catch (err) {
@@ -112,6 +114,80 @@ function deepMerge_(a, b) {
   }
   return out;
 }
+
+// ---- Follow-up calls ----
+// Books a 30-minute call on this account's calendar and invites the work address, so it lands on the
+// work calendar right away as an unanswered (tentative) invite. Starts at the time chosen on the Desk;
+// if that slot is taken it moves to the next free half hour between 10 and 4 that Wednesday, then later Wednesdays.
+const CALL_MINUTES = 30, DAY_START = 10, DAY_END = 16, WEEKS_TO_TRY = 4;
+function bookCall_(slug) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const f = docFile_(slug);
+    if (!f) throw new Error('Not found');
+    const doc = readDoc_(f), call = doc.call || {};
+    if (!call.date || !call.time) throw new Error('Pick a date and time first');
+    const tz = Session.getScriptTimeZone(), work = config_('WORK_EMAIL') || 'eli@thesourcepm.com';
+    const cal = CalendarApp.getDefaultCalendar();
+    const workCal = safeCal_(work);
+    const calendars = [cal].concat(workCal ? [workCal] : []);
+    const existing = call.eventId ? safeEvent_(cal, call.eventId) : null;
+
+    let start = Utilities.parseDate(call.date + ' ' + call.time, tz, 'yyyy-MM-dd HH:mm');
+    const slot = firstFree_(calendars, start, existing ? existing.getId() : null);
+    if (!slot) throw new Error('No free 30-minute slot between 10 and 4 on the next ' + WEEKS_TO_TRY + ' Wednesdays');
+    const end = new Date(slot.getTime() + CALL_MINUTES * 60000);
+
+    const owner = doc.ownerName || 'owner';
+    const title = 'Tentative: Inspection follow-up call – ' + owner + ' (' + doc.property + ')';
+    const phones = [].concat(doc.ownerPhones || doc.ownerPhone || []).filter(Boolean);
+    const description = ['Call ' + owner + ' about the ' + doc.property + ' inspection (' + doc.date + ').',
+      phones.length ? 'Phone: ' + phones.join(', ') : 'Phone: see the owner page in AppFolio',
+      doc.zLink ? 'Z Inspector report: ' + doc.zLink : '', 'Booked from the Inspection Desk.'].filter(Boolean).join('\n');
+
+    let ev;
+    if (existing) { ev = existing; ev.setTime(slot, end); ev.setTitle(title); ev.setDescription(description); }
+    else ev = cal.createEvent(title, slot, end, { description: description, guests: work, sendInvites: true });
+    ev.setColor(CalendarApp.EventColor.ORANGE);
+
+    const booked = Utilities.formatDate(slot, tz, "EEEE, MMMM d 'at' h:mm a");
+    const moved = slot.getTime() !== start.getTime();
+    const now = new Date().toISOString();
+    const note = (existing ? 'Moved to ' : 'On your calendar: ') + booked + (moved ? ' (your first choice was taken)' : '') +
+      '. Invite sent to ' + work + (workCal ? '; checked your work calendar for conflicts.' : '; your work calendar isn\u2019t shared with this account, so only the personal calendar was checked for conflicts.');
+    doc.call = Object.assign({}, call, { eventId: ev.getId(), booked: booked, bookedStart: slot.toISOString(),
+      date: Utilities.formatDate(slot, tz, 'yyyy-MM-dd'), time: Utilities.formatDate(slot, tz, 'HH:mm') });
+    doc.steps = Object.assign({}, doc.steps, { call: true });
+    doc.requests = Object.assign({}, doc.requests, { call: { state: 'done', at: now, note: note } });
+    doc.activity = (doc.activity || []).concat([{ at: now, action: existing ? 'Moved the follow-up call' : 'Added the follow-up call to your calendar',
+      detail: title + ' · ' + booked + ' · 30 min · invite to ' + work + '. ' + description.replace(/\n/g, ' · '), evidence: [] }]);
+    doc.updatedAt = now;
+    doc._version = (doc._version || 0) + 1;
+    f.setContent(JSON.stringify(doc));
+    return { booked: booked, note: note, version: doc._version };
+  } finally { lock.releaseLock(); }
+}
+function firstFree_(calendars, start, ignoreId) {
+  const tz = Session.getScriptTimeZone();
+  const busyAt = t => {
+    const e = new Date(t.getTime() + CALL_MINUTES * 60000);
+    return calendars.some(c => c.getEvents(t, e).some(ev => !ev.isAllDayEvent() && ev.getId() !== ignoreId &&
+      ev.getMyStatus() !== CalendarApp.GuestStatus.NO));
+  };
+  let day = new Date(start);
+  for (let w = 0; w < WEEKS_TO_TRY; w++) {
+    const dayStr = Utilities.formatDate(day, tz, 'yyyy-MM-dd');
+    let t = w === 0 ? new Date(start) : Utilities.parseDate(dayStr + ' ' + DAY_START + ':00', tz, 'yyyy-MM-dd H:mm');
+    const last = Utilities.parseDate(dayStr + ' ' + DAY_END + ':00', tz, 'yyyy-MM-dd H:mm');
+    for (; t.getTime() + CALL_MINUTES * 60000 <= last.getTime(); t = new Date(t.getTime() + CALL_MINUTES * 60000))
+      if (!busyAt(t)) return t;
+    day = new Date(day.getTime() + 7 * 86400000);
+  }
+  return null;
+}
+function safeCal_(id) { try { return CalendarApp.getCalendarById(id); } catch (e) { return null; } }
+function safeEvent_(cal, id) { try { return cal.getEventById(id); } catch (e) { return null; } }
 
 // ---- Desk images ----
 function imageFolder_() { return childFolder_(deskFolder_(), IMAGE_FOLDER); }
