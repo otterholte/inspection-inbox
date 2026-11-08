@@ -66,7 +66,8 @@ async function buildChecklistPdf(d) {
     pages[l.p].drawEllipse({ x: (x0 + x1) / 2, y: H(l.p) - (y0 + y1) / 2, xScale: (x1 - x0) / 2, yScale: (y1 - y0) / 2, borderColor: ink, borderWidth: 1.1 });
   }
   const I = layout.labels['Initials:']; put(I.p, I.r[2] + 6, I.r[3] - 1, spec.initials || 'EO', 12);
-  return doc.save();
+  // Object streams make this form's page tree unreadable to some viewers (pdf.js sees 1 page), so save plainly.
+  return doc.save({ useObjectStreams: false });
 }
 
 // Where a phrase sits on a printed line, from the form's word boxes (words can run together, e.g. "place/AC").
@@ -104,7 +105,7 @@ async function updateChecklistNow(onStep) {
   const before = new Set(d.checklistMarks || []), marks = checklistMarks(d);
   const bytes = await buildChecklistPdf(d);
   onStep('Making page previews…');
-  const pages = await renderPages(bytes);
+  const pages = await Promise.race([renderPages(bytes), new Promise((_, r) => setTimeout(() => r(new Error('the page previews took too long')), 30000))]);
   onStep('Saving to your Drive…');
   const stamp = now.slice(0, 16).replace(/[:T]/g, '-');
   const pdfId = (await api('desk.putImage', { filename: `${slug}_checklist_${stamp}.pdf`, mimeType: 'application/pdf', data: await blobToB64(new Blob([bytes])) })).id;
