@@ -128,6 +128,7 @@ function addQueueItem(name, kind, prop) {
   q.prepend(li);
   return li.querySelector('.pill');
 }
+const sentFiles = [];
 async function upload(blob, filename, kind, prop) {
   const st = addQueueItem(filename, kind, prop);
   try {
@@ -140,6 +141,9 @@ async function upload(blob, filename, kind, prop) {
       .then(r => r.json());
     if (!r.ok) throw new Error(r.error);
     st.textContent = '✓ Saved'; st.className = 'pill ok';
+    // Remember what was sent this visit, so "Send to Claude" can attach it to the inspection.
+    sentFiles.push({ driveId: r.id, name: filename, kind, property: prop });
+    renderSendCard();
     return true;
   } catch (e) {
     st.textContent = 'Failed'; st.className = 'pill err';

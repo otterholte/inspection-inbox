@@ -9,6 +9,8 @@ const REQUESTS = {
   email: 'Open AppFolio and draft the owner email (not sent)',
   checklist: 'Fill out and initial the 2026 checklist PDF',
   docs: 'Upload the checklist to AppFolio (tenant + property, Inspections folder)',
+  editEmail: 'Make your change to the owner email',
+  editZ: 'Make your change to the Z Inspector notes',
 };
 const STEPS = [
   ['processed', 'Checklist processed and AppFolio audited', 'process'],
@@ -107,46 +109,59 @@ function renderDeskList() {
         <span class="meta">${esc(d.ownerName || 'Owner not looked up yet')} · inspected ${esc(fmtShort(d.date))}</span>
         ${chips ? `<span class="chipsrow">${chips}</span>` : ''}</button>`;
     }).join('') : `<section class="card empty"><p class="hint">${D.docs.length ? 'Nothing in this list.' : 'No inspections yet. Tap + New inspection to add one.'}</p></section>`}`;
-  $('newInsp').onclick = () => { history.pushState({ view: 'new' }, ''); renderNew(); };
+  $('newInsp').onclick = () => { history.pushState({ view: 'inbox' }, ''); openInbox(); };
   deskEl().querySelectorAll('[data-f]').forEach(b => b.onclick = () => { D.filter = b.dataset.f; try { localStorage.setItem('desk-filter', D.filter); } catch {} renderDeskList(); });
   deskEl().querySelectorAll('.item').forEach(b => b.onclick = () => { history.pushState({ view: 'detail', id: b.dataset.id }, ''); openDetail(b.dataset.id); });
 }
 
-// ---------- new inspection ----------
-function renderNew() {
-  setBar('New inspection', 'Claude looks up the owner, audits AppFolio and drafts everything');
-  const t = new Date(), z = n => String(n).padStart(2, '0');
-  deskEl().innerHTML = `
-    <section class="card">
-      <label for="nProp">Property address</label><input type="text" id="nProp" placeholder="e.g. 1137 Timber Lane" value="${esc(state.lastProperty || '')}">
-      <label for="nDate" style="margin-top:12px">Inspection date</label><input type="date" id="nDate" value="${t.getFullYear()}-${z(t.getMonth() + 1)}-${z(t.getDate())}">
-      <label for="nFiles" style="margin-top:12px">Checklist photos or PDF (front and back)</label><input type="file" id="nFiles" accept="image/*,application/pdf" multiple>
-      <label for="nNotes" style="margin-top:12px">Anything else to know <span style="font-weight:400">· optional</span></label><textarea id="nNotes" placeholder="Dictate with your keyboard's mic"></textarea>
-      <p class="hint" style="margin-top:10px">Voice memos and scans you send from the Inbox tab for this address get picked up too.</p>
-      <button class="primary" id="nSave">Add inspection</button>
-      <p class="hint" id="nMsg"></p>
-    </section>`;
-  $('nSave').onclick = createInspection;
-}
+// ---------- new inspection: the Inbox screen ----------
 const slugify = (p, d) => (p.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'property') + '_' + d;
-async function createInspection() {
-  const prop = $('nProp').value.trim(), date = $('nDate').value;
-  if (!prop || !date) { $('nMsg').textContent = 'Add the property address and inspection date.'; return; }
-  $('nSave').disabled = true;
-  const uploads = [];
-  try {
-    for (const f of $('nFiles').files) {
-      $('nMsg').textContent = `Uploading ${f.name}…`;
-      const r = await api('upload', { property: prop, kind: 'checklist-scan', filename: f.name, mimeType: f.type || 'application/octet-stream', data: await toBase64(f) });
-      uploads.push({ driveId: r.id, name: f.name, type: f.type });
-    }
-    const id = slugify(prop, date), now = new Date().toISOString();
-    await api('desk.set', { slug: id, doc: { property: prop, date, ownerName: '', steps: {}, uploads, intakeNotes: $('nNotes').value.trim(),
-      requests: { process: { state: 'queued', at: now } }, createdAt: now, updatedAt: now } });
-    history.replaceState({ view: 'detail', id }, '');
-    openDetail(id);
-  } catch (e) { $('nMsg').textContent = 'Couldn\'t save it: ' + e.message; $('nSave').disabled = false; }
+const todayStr = () => { const t = new Date(), z = n => String(n).padStart(2, '0'); return `${t.getFullYear()}-${z(t.getMonth() + 1)}-${z(t.getDate())}`; };
+function openInbox(prop, date) {
+  stopPoll();
+  D.inboxFor = prop ? { prop, date } : null;
+  $('property').value = prop || '';
+  $('inspDate').value = date || todayStr();
+  setBar(prop ? 'Add to ' + prop : 'New inspection', 'Record, upload or scan, then send it to Claude');
+  showView('inbox');
+  renderSendCard();
 }
+function renderSendCard() {
+  if (!$('sendBtn')) return;
+  const prop = $('property').value.trim();
+  const mine = sentFiles.filter(f => f.property === prop);
+  $('sendBtn').disabled = !prop || !mine.length;
+  $('sendHint').textContent = !prop ? 'Type the property address in Step 1.'
+    : mine.length ? `${mine.length} file${mine.length > 1 ? 's' : ''} ready for ${prop}. Claude reads them, looks up the owner, audits AppFolio and drafts everything.`
+    : 'Add a memo, scan or note above first.';
+}
+$('property').addEventListener('input', renderSendCard);
+$('inboxBack').onclick = () => history.back();
+$('sendBtn').onclick = async () => {
+  const prop = $('property').value.trim(), date = $('inspDate').value || todayStr();
+  const files = sentFiles.filter(f => f.property === prop);
+  if (!prop || !files.length) return;
+  $('sendBtn').disabled = true; $('sendMsg').textContent = 'Sending…';
+  const id = slugify(prop, date), now = new Date().toISOString();
+  const uploads = files.map(({ driveId, name, kind }) => ({ driveId, name, kind }));
+  try {
+    let existing = null;
+    try { existing = (await api('desk.get', { slug: id })).doc; } catch {}
+    if (existing) {
+      await api('desk.update', { slug: id, ifVersion: existing._version, patch: {
+        uploads: [...(existing.uploads || []), ...uploads], updatedAt: now,
+        requests: { ...(existing.requests || {}), process: { state: 'queued', at: now } } } });
+    } else {
+      await api('desk.set', { slug: id, doc: { property: prop, date, ownerName: '', steps: {}, uploads,
+        requests: { process: { state: 'queued', at: now } }, createdAt: now, updatedAt: now } });
+    }
+    for (const f of files) sentFiles.splice(sentFiles.indexOf(f), 1);
+    $('queue').innerHTML = '<li class="empty">Nothing uploaded yet.</li>';
+    $('sendMsg').textContent = '';
+    history.replaceState({ view: 'detail', id }, '');
+    showView('desk'); openDetail(id);
+  } catch (e) { $('sendMsg').textContent = 'Couldn\'t send it: ' + e.message; $('sendBtn').disabled = false; }
+};
 
 // ---------- detail ----------
 async function openDetail(id) {
@@ -207,6 +222,7 @@ function renderDetail(keepScroll) {
     <section class="card"><h2>What you saw <span class="pilltag">in the email</span></h2>
       <textarea id="review" aria-label="What you saw">${esc(f.review)}</textarea>
       ${(ev.review || []).length ? `<span class="src">Where this came from</span>${evHtml(ev.review)}` : ''}
+      <button class="sec" id="addMore">+ Add a memo, scan or note</button>
     </section>
 
     <section class="card"><h2>Maintenance items <span class="pilltag">for Z Inspector</span></h2>
@@ -234,8 +250,10 @@ function renderDetail(keepScroll) {
     </section>` : ''}
 
     <section class="card"><h2>Z Inspector notes</h2>
-      <p class="hint">Copy these into the inspection's notes in Z Inspector, submit it, then tap the green button.</p>
-      <pre class="out" id="zOut"></pre>
+      <p class="hint">Tap the text to edit it. Copy it into the inspection's notes in Z Inspector, submit it, then tap the green button.</p>
+      <textarea class="edit-box" id="zText" aria-label="Z Inspector notes"></textarea>
+      <p class="hint" id="zEdited"></p>
+      ${askBlock('editZ', 'zAsk')}
       <button class="sec" id="copyZ">Copy notes</button>
       <button class="primary" id="zDone" ${st.zinspector ? 'disabled' : ''}>${st.zinspector ? '✓ In Z Inspector and submitted' : 'It\'s in Z Inspector and submitted'}</button>
       ${st.zinspector ? reqBlock('link', st.link ? 'Find the link again' : 'Get the Z Inspector link') : ''}
@@ -255,7 +273,9 @@ function renderDetail(keepScroll) {
 
     <section class="card"><h2>Email to the owner</h2>
       <label for="owner">Greeting</label><input type="text" id="owner" value="${esc(f.owner)}">
-      <pre class="out" id="bodyOut"></pre>
+      <textarea class="edit-box" id="emailText" aria-label="Email to the owner" style="min-height:320px"></textarea>
+      <p class="hint" id="emailEdited"></p>
+      ${askBlock('editEmail', 'emailAsk')}
       <button class="sec" id="copyBody">Copy message</button>
       ${reqBlock('email', st.email ? 'Draft it again in AppFolio' : 'Draft it in AppFolio', !!st.link)}
       ${st.link ? '' : '<p class="hint">Available once the Z Inspector link is in.</p>'}
@@ -277,6 +297,49 @@ function renderDetail(keepScroll) {
     </section>`;
   wireDetail();
   if (keepScroll) window.scrollTo(0, y);
+}
+// "Tell Claude a change": speak or type an instruction; the runner rewrites the text.
+function askBlock(key, id) {
+  const r = (D.current.data.requests || {})[key];
+  if (r?.state === 'queued') return `<div class="waiting">Waiting for Claude to make your change: “${esc(r.instruction)}”. ${RUN_HINT}</div>`;
+  return `${r?.state === 'done' && r.note ? `<div class="doneMsg">${esc(r.note)}</div>` : ''}
+    ${r?.state === 'failed' ? `<div class="waiting">Claude couldn't make that change${r.note ? ': ' + esc(r.note) : ''}.</div>` : ''}
+    <div class="ask">
+      <div class="row2"><button class="sec mic" type="button" data-mic="${id}">🎤 Speak</button>
+        <textarea id="${id}" rows="2" placeholder="Tell Claude a change, e.g. “make it shorter and mention the gutters”"></textarea></div>
+      <button class="sec" type="button" data-ask="${key}" data-src="${id}">Send change to Claude</button>
+    </div>`;
+}
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let listening = null;
+function wireMics() {
+  document.querySelectorAll('[data-mic]').forEach(btn => {
+    if (!SR) { btn.remove(); return; }
+    btn.onclick = () => {
+      if (listening) { listening.stop(); return; }
+      const box = $(btn.dataset.mic), base = box.value ? box.value.trim() + ' ' : '';
+      const rec = new SR(); rec.lang = 'en-US'; rec.interimResults = true; rec.continuous = true;
+      let final = '';
+      rec.onresult = e => {
+        let interim = '';
+        for (let i = e.resultIndex; i < e.results.length; i++) (e.results[i].isFinal ? (final += e.results[i][0].transcript) : (interim += e.results[i][0].transcript));
+        box.value = base + final + interim;
+      };
+      rec.onend = () => { btn.classList.remove('on'); btn.textContent = '🎤 Speak'; listening = null; };
+      rec.onerror = () => rec.onend();
+      try { rec.start(); listening = rec; btn.classList.add('on'); btn.textContent = '■ Stop'; } catch {}
+    };
+  });
+  document.querySelectorAll('[data-ask]').forEach(btn => btn.onclick = async () => {
+    const instruction = $(btn.dataset.src).value.trim();
+    if (!instruction) { $(btn.dataset.src).focus(); return; }
+    if (listening) listening.stop();
+    await save();
+    const key = btn.dataset.ask, target = key === 'editEmail' ? 'email' : 'z';
+    const text = target === 'email' ? $('emailText').value : $('zText').value;
+    await patch({ requests: { ...(D.current.data.requests || {}), [key]: { state: 'queued', at: new Date().toISOString(), instruction, text } } });
+    renderDetail(true);
+  });
 }
 function itemRow(item) {
   const text = item?.text ?? '', when = item?.when === 'later' ? 'later' : 'now';
@@ -316,8 +379,15 @@ function wireDetail() {
   $('recs').addEventListener('click', e => { if (e.target.matches('.x')) { e.target.closest('.rec').remove(); changed(); } });
   $('addItem').onclick = () => { $('items').insertAdjacentHTML('beforeend', itemRow({})); $('items').lastElementChild.querySelector('input').focus(); };
   $('addRec').onclick = () => { $('recs').insertAdjacentHTML('beforeend', recRow(['', ''])); $('recs').lastElementChild.querySelector('input').focus(); };
-  $('copyZ').onclick = () => copyText(buildZ(), 'zOut', 'zMsg', 'Notes copied. Paste them into Z Inspector.');
-  $('copyBody').onclick = () => copyText(buildEmail(), 'bodyOut', 'copyMsg', 'Message copied.');
+  $('copyZ').onclick = () => copyText($('zText').value, 'zText', 'zMsg', 'Notes copied. Paste them into Z Inspector.');
+  $('copyBody').onclick = () => copyText($('emailText').value, 'emailText', 'copyMsg', 'Message copied.');
+  $('addMore').onclick = async () => { await save(); history.pushState({ view: 'inbox' }, ''); openInbox(D.current.data.property, D.current.data.date); };
+  // Typing in either box keeps your wording; "Use the generated version" goes back to the automatic text.
+  for (const [box, key] of [['zText', 'z'], ['emailText', 'email']]) $(box).addEventListener('input', () => {
+    D.current.data.overrides = { ...(D.current.data.overrides || {}), [key]: $(box).value };
+    changed();
+  });
+  wireMics();
   $('zDone').onclick = async () => { await save(); await patch({ steps: { ...D.current.data.steps, zinspector: true } }); queueReq('link'); };
   $('sentBtn').onclick = async () => { await save(); await patch({ steps: { ...D.current.data.steps, sent: !D.current.data.steps?.sent } }); renderDetail(true); };
   renderOutputs();
@@ -329,7 +399,7 @@ function readForm() {
   const maintenance = [...document.querySelectorAll('#items .it')].map(r => ({ text: r.querySelector('.itx').value.trim(), when: r.dataset.when })).filter(i => i.text);
   const recs = [...document.querySelectorAll('#recs .rec')].map(r => [r.querySelector('.rt').value.trim(), r.querySelector('.tf').value.trim()]).filter(r => r[0]);
   const fields = { ...(D.current.data.fields || {}), review: $('review').value, tenant: $('tenant').value, owner: $('owner').value };
-  return { fields, maintenance, recs, call: { ...(D.current.data.call || {}), date: $('callDate').value, time: $('callTime').value, alt: $('altDate').value } };
+  return { fields, maintenance, recs, overrides: D.current.data.overrides || {}, call: { ...(D.current.data.call || {}), date: $('callDate').value, time: $('callTime').value, alt: $('altDate').value } };
 }
 function changed() {
   D.dirty = true;
@@ -399,49 +469,47 @@ function buildEmail() {
     ` If that time doesn't work, just reply with a better time and I'll reschedule. If this covers everything and you don't need a call, please reply to this email and let me know.`);
   return out.join('\n');
 }
-function renderOutputs() { $('zOut').textContent = buildZ(); $('bodyOut').textContent = buildEmail(); }
+function renderOutputs() {
+  const o = D.current.data.overrides || {};
+  for (const [box, key, build, note] of [['zText', 'z', buildZ, 'zEdited'], ['emailText', 'email', buildEmail, 'emailEdited']]) {
+    const el = $(box); if (!el) continue;
+    const custom = typeof o[key] === 'string';
+    if (document.activeElement !== el) el.value = custom ? o[key] : build();
+    $(note).innerHTML = custom ? 'Your edited version. Changes to the sections above won\'t update it. <button class="linkbtn" data-reset="' + key + '">Use the generated version</button>' : '';
+  }
+  document.querySelectorAll('[data-reset]').forEach(b => b.onclick = () => {
+    // The server merges fields, so a removed edit is sent as an explicit delete.
+    D.current.data.overrides = { ...(D.current.data.overrides || {}), [b.dataset.reset]: { __delete__: true } };
+    changed();
+  });
+}
 async function copyText(text, preId, msgId, msg) {
   try { await navigator.clipboard.writeText(text); $(msgId).textContent = msg; }
   catch {
-    const r = document.createRange(); r.selectNodeContents($(preId));
-    const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+    $(preId).focus(); $(preId).select();
     $(msgId).textContent = 'Copying was blocked. The text is selected; copy it from the menu.';
   }
 }
 
-// ---------- tabs + phone back button ----------
-let deskLoaded = false;
+// ---------- screens + phone back button ----------
 function setBar(title, sub) { $('barTitle').textContent = title; $('barSub').textContent = sub; }
-function showTab(tab, push = true) {
-  $('inboxView').classList.toggle('hidden', tab !== 'inbox');
-  deskEl().classList.toggle('hidden', tab !== 'desk');
-  document.querySelectorAll('.tabbar button').forEach(b => b.setAttribute('aria-current', b.dataset.tab === tab ? 'page' : 'false'));
-  try { localStorage.setItem('last-tab', tab); } catch {}
-  if (push) history.pushState({ view: tab === 'desk' ? 'list' : 'inbox' }, '');
+function showView(v) {
+  $('inboxView').classList.toggle('hidden', v !== 'inbox');
+  deskEl().classList.toggle('hidden', v !== 'desk');
   window.scrollTo(0, 0);
-  if (tab === 'inbox') { stopPoll(); setBar('Inspection Inbox', 'Saves to Drive · 2026/27 Inspections'); }
-  else if (!deskLoaded || !D.current) { deskLoaded = true; deskList(); }
 }
-document.querySelectorAll('.tabbar button').forEach(b => b.onclick = async () => {
-  if (b.dataset.tab === 'desk' && D.current) await save();
-  if (b.dataset.tab === 'desk') { D.current = null; deskLoaded = false; }
-  showTab(b.dataset.tab);
-});
 window.addEventListener('popstate', async e => {
   if (!$('lightbox').classList.contains('hidden')) { closeLightbox(); return; }
   const v = e.state?.view;
-  if (D.current) await save();
-  if (v === 'detail') { showTab('desk', false); openDetail(e.state.id); }
-  else if (v === 'new') { showTab('desk', false); renderNew(); }
-  else if (v === 'inbox') { D.current = null; showTab('inbox', false); }
-  else { D.current = null; deskLoaded = true; showTab('desk', false); deskList(); }
+  if (D.current && $('review')) await save();
+  if (v === 'detail') { showView('desk'); openDetail(e.state.id); }
+  else if (v === 'inbox') { openInbox(); }
+  else { D.current = null; showView('desk'); deskList(); }
 });
 $('lbClose').onclick = () => history.back();
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('lightbox').classList.contains('hidden')) history.back(); });
 document.addEventListener('visibilitychange', () => { if (document.hidden && D.dirty) save(); });
 window.addEventListener('unlocked', () => {
-  let last = 'inbox';
-  try { last = localStorage.getItem('last-tab') || 'inbox'; } catch {}
-  history.replaceState({ view: last === 'desk' ? 'list' : 'inbox' }, '');
-  showTab(last, false);
+  history.replaceState({ view: 'list' }, '');
+  showView('desk'); deskList();
 });

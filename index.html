@@ -137,7 +137,7 @@
   #lockMsg { min-height: 1.4em; margin-top: 12px !important; color: #ffd2cc; opacity: 1 !important; }
   body.locked main, body.locked .bar { display: none; }
   /* tabs */
-  body:not(.locked) main { padding-bottom: calc(env(safe-area-inset-bottom) + 96px); }
+  body:not(.locked) main { padding-bottom: calc(env(safe-area-inset-bottom) + 40px); }
   .bar-t { min-width: 0; } .bar-t h1 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .tabbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; display: grid; grid-template-columns: 1fr 1fr;
     background: var(--card); border-top: 1px solid var(--line); padding: 6px max(12px, env(safe-area-inset-left)) calc(env(safe-area-inset-bottom) + 6px); }
@@ -145,6 +145,14 @@
   .tabbar button { border: 0; background: none; display: grid; justify-items: center; gap: 2px; font-size: .78rem; font-weight: 700; color: var(--muted); padding: 6px 0; border-radius: 12px; }
   .tabbar svg { width: 24px; height: 24px; }
   .tabbar button[aria-current="page"] { color: var(--brand-2); background: var(--brand-soft); }
+  .send { border: 2px solid var(--brand-2); } .send h2 { margin: 0 0 4px; font-size: 1rem; }
+  .p-send { background: var(--brand-2); } #inboxView label[for=inspDate] { display: block; font-weight: 700; margin-bottom: 8px; }
+  #inspDate { width: 100%; border: 1px solid var(--line); background: var(--bg); border-radius: 12px; padding: 12px 14px; font-size: 1rem; }
+  .edit-box { width: 100%; min-height: 220px; font: 14px/1.55 system-ui, -apple-system, sans-serif; }
+  .ask { display: grid; gap: 8px; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 10px; }
+  .ask .row2 { display: grid; grid-template-columns: auto 1fr; gap: 8px; }
+  .mic.on { background: var(--rec); color: #fff; border-color: var(--rec); }
+  .linkbtn { border: 0; background: none; color: var(--brand-2); font-weight: 600; padding: 0; text-align: left; }
 
   /* desk */
   #deskView { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; padding-top: 14px; }
@@ -243,12 +251,15 @@
   </div>
 </header>
 
-<main id="inboxView">
+<main id="inboxView" class="hidden">
+  <button class="sec backbtn" id="inboxBack" style="margin-top:14px">← Back to the Desk</button>
   <div class="eyebrow">Step 1</div>
   <section class="card prop" id="propCard">
     <label for="property">Which property?</label>
     <input id="property" type="text" placeholder="e.g. 1137 Timber Lane" autocomplete="off" enterkeyhint="done">
     <div class="chips" id="recent"></div>
+    <label for="inspDate" style="margin-top:14px">Inspection date</label>
+    <input id="inspDate" type="date">
   </section>
 
   <div class="eyebrow">Step 2 · Add to this property</div>
@@ -328,18 +339,19 @@
   <section class="card">
     <ul class="list" id="queue"><li class="empty">Nothing uploaded yet.</li></ul>
   </section>
+
+  <div class="eyebrow">Step 3</div>
+  <section class="card send" id="sendCard">
+    <h2>Send to Claude</h2>
+    <p class="hint" id="sendHint">Add a memo, scan or note above first.</p>
+    <button class="primary p-send" id="sendBtn" disabled>Send to Claude</button>
+    <p class="hint" id="sendMsg"></p>
+  </section>
 </main>
 
-<main id="deskView" class="hidden"></main>
+<main id="deskView"></main>
 
-<nav class="tabbar" aria-label="Sections">
-  <button data-tab="inbox" aria-current="page">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3M7 8l5-5 5 5"/><path d="M4 14v5a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5"/></svg>
-    Inbox</button>
-  <button data-tab="desk" aria-current="false">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4h6v3H9zM9 12l2 2 4-4"/></svg>
-    Desk</button>
-</nav>
+
 
 <div id="lightbox" class="hidden" role="dialog" aria-modal="true" aria-label="Screenshot">
   <div class="lb-top"><span id="lbCaption"></span><button id="lbClose">Close</button></div>
@@ -352,7 +364,7 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="app.js?v=8"></script>
-<script src="desk.js?v=8"></script>
+<script src="app.js?v=9"></script>
+<script src="desk.js?v=9"></script>
 </body>
 </html>
