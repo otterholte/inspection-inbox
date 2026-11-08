@@ -91,7 +91,8 @@ async function renderPages(bytes) {
   for (let n = 1; n <= pdf.numPages; n++) {
     const page = await pdf.getPage(n), vp = page.getViewport({ scale: 2 });
     const c = document.createElement('canvas'); c.width = vp.width; c.height = vp.height;
-    await page.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
+    // 'print' renders without requestAnimationFrame, so it finishes even when the screen isn't drawing.
+    await page.render({ canvasContext: c.getContext('2d'), viewport: vp, intent: 'print' }).promise;
     out.push(await new Promise(r => c.toBlob(r, 'image/jpeg', 0.85)));
   }
   return out;
