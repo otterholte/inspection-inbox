@@ -276,6 +276,8 @@ function renderDetail(keepScroll) {
       <label for="subjectText">Subject</label>
       <div class="mline"><input type="text" id="subjectText" value="${esc(`Inspection – ${d.property}`)}" aria-label="Email subject">
         <button class="sec" id="copySubject" type="button">Copy</button></div>
+      <label for="goAhead">If they don't need a call, I'll schedule…</label>
+      <input type="text" id="goAhead" value="${esc(f.goAhead ?? defaultGoAhead(d.recs || []))}" placeholder="e.g. the patio door lock repair (leave blank to skip)">
       <label for="emailText">Message</label>
       <textarea class="edit-box" id="emailText" aria-label="Email to the owner" style="min-height:320px"></textarea>
       <p class="hint" id="emailEdited"></p>
@@ -364,7 +366,7 @@ function wireDetail() {
   wireEvidence(deskEl());
   deskEl().querySelectorAll('[data-req]').forEach(b => b.onclick = () => queueReq(b.dataset.req));
   if (!D.current.data.steps?.processed) return;
-  ['review', 'tenant', 'owner', 'callDate', 'callTime', 'altDate'].forEach(k => $(k).addEventListener('input', changed));
+  ['review', 'tenant', 'owner', 'goAhead', 'callDate', 'callTime', 'altDate'].forEach(k => $(k).addEventListener('input', changed));
   $('items').addEventListener('input', changed);
   $('recs').addEventListener('input', changed);
   $('items').addEventListener('click', e => {
@@ -399,6 +401,7 @@ function readForm() {
   const maintenance = [...document.querySelectorAll('#items .it')].map(r => ({ text: r.querySelector('.itx').value.trim(), when: r.dataset.when })).filter(i => i.text);
   const recs = [...document.querySelectorAll('#recs .rec')].map(r => [r.querySelector('.rt').value.trim(), r.querySelector('.tf').value.trim()]).filter(r => r[0]);
   const fields = { ...(D.current.data.fields || {}), review: $('review').value, tenant: $('tenant').value, owner: $('owner').value };
+  if ($('goAhead').value.trim() !== defaultGoAheadFromForm()) fields.goAhead = $('goAhead').value;
   return { fields, maintenance, recs, overrides: D.current.data.overrides || {}, call: { ...(D.current.data.call || {}), date: $('callDate').value, time: $('callTime').value, alt: $('altDate').value } };
 }
 function changed() {
@@ -464,10 +467,22 @@ function buildEmail() {
   if (f.review.trim()) out.push('What I saw:', f.review.trim(), '');
   if (v.recs.length) { out.push('My recommendations:'); v.recs.forEach(([t, tf], i) => out.push(`${i + 1}. ${t}${tf ? ' – ' + tf : ''}`)); out.push(''); }
   const when = d.call?.booked || [fmtLong(v.call.date), fmtClock(v.call.time)].filter(Boolean).join(' at ');
+  const altDay = v.call.alt ? fmtLong(v.call.alt).split(',')[0] : '';
+  const goAhead = (f.goAhead ?? defaultGoAhead(v.recs)).trim();
   out.push(`I'll give you a call on ${when || '[date and time]'} to go over this and answer any questions.` +
     (v.call.alt ? ` I'm also available on ${fmtLong(v.call.alt)} if that works better.` : '') +
-    ` If that time doesn't work, just reply with a better time and I'll reschedule. If this covers everything and you don't need a call, please reply to this email and let me know.`);
+    ` If that time doesn't work, please reply with a few better times${altDay ? ' on either of those days' : ''} and I'll reschedule.` +
+    ` If this covers everything and you don't need a call, please reply to this email and let me know` +
+    (goAhead ? `, and I'll just schedule ${goAhead}.` : '.'));
   return out.join('\n');
+}
+function defaultGoAheadFromForm() {
+  return defaultGoAhead([...document.querySelectorAll('#recs .rec')].map(r => [r.querySelector('.rt').value.trim(), r.querySelector('.tf').value.trim()]).filter(r => r[0]));
+}
+// What gets scheduled if the owner skips the call; editable per inspection.
+function defaultGoAhead(recs) {
+  const now = recs.filter(([, tf]) => /^now$/i.test(tf || ''));
+  return now.length === 1 ? 'that repair' : now.length ? 'the repairs marked Now above' : '';
 }
 function renderOutputs() {
   const o = D.current.data.overrides || {};
