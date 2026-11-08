@@ -381,7 +381,7 @@ function wireDetail() {
   $('addItem').onclick = () => { $('items').insertAdjacentHTML('beforeend', itemRow({})); $('items').lastElementChild.querySelector('input').focus(); };
   $('addRec').onclick = () => { $('recs').insertAdjacentHTML('beforeend', recRow(['', ''])); $('recs').lastElementChild.querySelector('input').focus(); };
   $('copyZ').onclick = () => copyText($('zText').value, 'zText', 'zMsg', 'Notes copied. Paste them into Z Inspector.');
-  $('copyBody').onclick = () => copyText($('emailText').value, 'emailText', 'copyMsg', 'Message copied.');
+  $('copyBody').onclick = () => copyEmail($('emailText').value);
   $('copySubject').onclick = () => copyText($('subjectText').value, 'subjectText', 'copyMsg', 'Subject copied.');
   $('addMore').onclick = async () => { await save(); history.pushState({ view: 'inbox' }, ''); openInbox(D.current.data.property, D.current.data.date); };
   // Typing in either box keeps your wording; "Use the generated version" goes back to the automatic text.
@@ -465,7 +465,7 @@ function buildEmail() {
   const out = [`Hi ${f.owner || '[owner]'},`, '',
     `I completed the inspection at ${d.property} on ${fmtShort(d.date)}.` + (good ? ` You can view the full report with photos here: ${d.zLink || '[Z Inspector link — Claude adds this]'}` : ''), ''];
   if (f.review.trim()) out.push('What I saw:', f.review.trim(), '');
-  if (v.recs.length) { out.push('My recommendations:'); v.recs.forEach(([t, tf], i) => out.push(`${i + 1}. ${t}${tf ? ' – ' + tf : ''}`)); out.push(''); }
+  if (v.recs.length) { out.push('My recommendations:', ''); v.recs.forEach(([t, tf], i) => out.push(`${i + 1}. ${t}${tf ? ' – ' + tf : ''}`)); out.push('', ''); }
   const when = d.call?.booked || [fmtLong(v.call.date), fmtClock(v.call.time)].filter(Boolean).join(' at ');
   const altDay = v.call.alt ? fmtLong(v.call.alt).split(',')[0] : '';
   const goAhead = (f.goAhead ?? defaultGoAhead(v.recs)).trim();
@@ -497,6 +497,33 @@ function renderOutputs() {
     D.current.data.overrides = { ...(D.current.data.overrides || {}), [b.dataset.reset]: { __delete__: true } };
     changed();
   });
+}
+// Copies the email twice over: formatted (bold section headings, paragraphs) for editors that keep
+// formatting, and plain text for everything else.
+const HEADINGS = /^(What I saw:|My recommendations:)\s*$/;
+function emailHtml(text) {
+  const blocks = text.replace(/\r/g, '').split(/\n{2,}/);
+  return blocks.map(b => {
+    const lines = b.split('\n').filter(l => l.trim() !== '');
+    if (!lines.length) return '';
+    if (lines.every(l => /^\d+\.\s/.test(l)))
+      return '<ol>' + lines.map(l => `<li>${linkify(esc(l.replace(/^\d+\.\s*/, '')))}</li>`).join('') + '</ol>';
+    return '<p>' + lines.map(l => HEADINGS.test(l.trim()) ? `<b>${esc(l.trim())}</b>` : linkify(esc(l))).join('<br>') + '</p>';
+  }).join('');
+}
+const linkify = s => s.replace(/https?:\/\/[^\s<]+/g, u => `<a href="${u}">${u}</a>`);
+async function copyEmail(text) {
+  try {
+    if (window.ClipboardItem && navigator.clipboard.write) {
+      await navigator.clipboard.write([new ClipboardItem({
+        'text/html': new Blob([emailHtml(text)], { type: 'text/html' }),
+        'text/plain': new Blob([text], { type: 'text/plain' }),
+      })]);
+      $('copyMsg').textContent = 'Message copied with bold headings. If they show up plain, the email editor dropped the formatting.';
+      return;
+    }
+  } catch {}
+  copyText(text, 'emailText', 'copyMsg', 'Message copied (plain text).');
 }
 async function copyText(text, preId, msgId, msg) {
   try { await navigator.clipboard.writeText(text); $(msgId).textContent = msg; }
