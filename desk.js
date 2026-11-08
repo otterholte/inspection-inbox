@@ -272,6 +272,7 @@ function renderDetail(keepScroll) {
 
     <section class="card"><h2>Email to the owner</h2>
       <label for="owner">Greeting</label><input type="text" id="owner" value="${esc(f.owner)}">
+      ${d.ownerUrl ? `<a class="sec ownerlink" href="${esc(d.ownerUrl)}" target="_blank" rel="noopener">Open ${esc(d.ownerName || 'the owner')} in AppFolio ↗</a>` : ''}
       <textarea class="edit-box" id="emailText" aria-label="Email to the owner" style="min-height:320px"></textarea>
       <p class="hint" id="emailEdited"></p>
       <button class="sec" id="copyBody">Copy message</button>

@@ -38,6 +38,7 @@ function doPost(e) {
       case 'desk.image': return json_({ ok: true, ...imageGet_(body.id) });
       case 'desk.putImage': return json_({ ok: true, id: imagePut_(body) });
       case 'desk.bookCall': return json_({ ok: true, ...bookCall_(body.slug) });
+      case 'desk.calendarCheck': return json_({ ok: true, ...calendarCheck_() });
       default: return json_({ ok: true, ...upload_(body) });
     }
   } catch (err) {
@@ -154,13 +155,14 @@ function bookCall_(slug) {
     const booked = Utilities.formatDate(slot, tz, "EEEE, MMMM d 'at' h:mm a");
     const moved = slot.getTime() !== start.getTime();
     const now = new Date().toISOString();
-    const note = (existing ? 'Moved to ' : 'On your calendar: ') + booked + (moved ? ' (your first choice was taken)' : '') +
+    const same = existing && Math.abs(existing.getStartTime().getTime() - slot.getTime()) < 60000;
+    const note = (same ? 'Still on your calendar: ' : existing ? 'Moved to ' : 'On your calendar: ') + booked + (moved ? ' (your first choice was taken)' : '') +
       '. Invite sent to ' + work + (workCal ? '; checked your work calendar for conflicts.' : '; your work calendar isn\u2019t shared with this account, so only the personal calendar was checked for conflicts.');
     doc.call = Object.assign({}, call, { eventId: ev.getId(), booked: booked, bookedStart: slot.toISOString(),
       date: Utilities.formatDate(slot, tz, 'yyyy-MM-dd'), time: Utilities.formatDate(slot, tz, 'HH:mm') });
     doc.steps = Object.assign({}, doc.steps, { call: true });
     doc.requests = Object.assign({}, doc.requests, { call: { state: 'done', at: now, note: note } });
-    doc.activity = (doc.activity || []).concat([{ at: now, action: existing ? 'Moved the follow-up call' : 'Added the follow-up call to your calendar',
+    doc.activity = (doc.activity || []).concat([{ at: now, action: same ? 'Re-checked the follow-up call' : existing ? 'Moved the follow-up call' : 'Added the follow-up call to your calendar',
       detail: title + ' · ' + booked + ' · 30 min · invite to ' + work + '. ' + description.replace(/\n/g, ' · '), evidence: [] }]);
     doc.updatedAt = now;
     doc._version = (doc._version || 0) + 1;
@@ -185,6 +187,16 @@ function firstFree_(calendars, start, ignoreId) {
     day = new Date(day.getTime() + 7 * 86400000);
   }
   return null;
+}
+// Read-only: can this account see the work calendar's busy times? Counts events in the next 7 days.
+function calendarCheck_() {
+  const work = config_('WORK_EMAIL') || 'eli@thesourcepm.com';
+  const cal = safeCal_(work);
+  if (!cal) return { workVisible: false };
+  const now = new Date(), week = new Date(now.getTime() + 7 * 86400000);
+  const evs = cal.getEvents(now, week).filter(ev => !ev.isAllDayEvent());
+  return { workVisible: true, name: cal.getName(), eventsNext7Days: evs.length,
+    sample: evs.slice(0, 3).map(ev => Utilities.formatDate(ev.getStartTime(), Session.getScriptTimeZone(), 'EEE MMM d h:mm a')) };
 }
 function safeCal_(id) { try { return CalendarApp.getCalendarById(id); } catch (e) { return null; } }
 function safeEvent_(cal, id) { try { return cal.getEventById(id); } catch (e) { return null; } }
@@ -245,4 +257,9 @@ function safeName_(name) {
 }
 function json_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
+}
+
+// Run this once from the editor after calendar access is added: it triggers Google's permission prompt.
+function authorizeCalendar() {
+  Logger.log('Calendar access OK: ' + CalendarApp.getDefaultCalendar().getName());
 }
