@@ -1,6 +1,26 @@
 const $ = id => document.getElementById(id);
 const KEY = 'inspection-inbox-v1';
 
+// ---- access code, asked each time the app is opened ----
+// Only the SHA-256 of the code lives in this public repo.
+const PIN_HASH = 'b4a906ff5d63dd73f46a93d31d43b493da0c06d4e1e071d84584e3a1d550feae';
+async function sha256(text) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+function unlock() { document.body.classList.remove('locked'); $('lock').remove(); }
+try { if (sessionStorage.getItem(KEY + '-unlocked') === PIN_HASH) unlock(); } catch {}
+$('lockForm').onsubmit = async e => {
+  e.preventDefault();
+  if (await sha256($('pin').value) === PIN_HASH) {
+    try { sessionStorage.setItem(KEY + '-unlocked', PIN_HASH); } catch {}
+    unlock();
+  } else {
+    $('lockMsg').textContent = 'Wrong code.';
+    $('pin').value = '';
+  }
+};
+
 // ---- per-device settings (only ever stored in this phone's browser) ----
 function loadState() {
   try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch { return {}; }

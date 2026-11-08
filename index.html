@@ -52,9 +52,21 @@
   .st-ok { color: var(--ok); } .st-err { color: var(--err); }
   .timer { font-variant-numeric: tabular-nums; }
   #settingsBtn { min-height: 40px; padding: 8px 12px; }
+  #lock { position: fixed; inset: 0; background: var(--bg); display: flex; align-items: center; justify-content: center; z-index: 10; }
+  #lock form { width: 240px; text-align: center; }
+  #pin { text-align: center; font-size: 1.6rem; letter-spacing: .4em; margin: 12px 0; }
+  body.locked main { display: none; }
 </style>
 </head>
-<body>
+<body class="locked">
+<div id="lock">
+  <form id="lockForm">
+    <h1>Inspection Inbox</h1>
+    <input id="pin" type="password" inputmode="numeric" autocomplete="off" maxlength="8" aria-label="Access code" autofocus>
+    <button class="primary full" type="submit">Unlock</button>
+    <p class="muted" id="lockMsg"></p>
+  </form>
+</div>
 <main>
   <header>
     <h1>Inspection Inbox</h1>
