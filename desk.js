@@ -282,16 +282,20 @@ function renderDetail(keepScroll) {
       <p class="saved" id="copyMsg"></p>
     </section>
 
-    ${(d.activity || []).length ? `<section class="card"><h2>Claude's work log</h2>
-      ${[...d.activity].reverse().map(a => `<div class="logitem"><b>${esc(a.action)}</b> <span class="hint">· ${esc(new Date(a.at).toLocaleString())}</span>
-        ${a.detail ? `<p class="hint">${esc(a.detail)}</p>` : ''}${evHtml(a.evidence)}</div>`).join('')}
+    ${(d.activity || []).length ? `<section class="card"><h2>Claude's work log <span class="pilltag">${d.activity.length} action${d.activity.length > 1 ? 's' : ''}</span></h2>
+      ${[...d.activity].reverse().map((a, i) => `<details class="logitem" ${i ? 'data-older hidden' : ''}>
+        <summary><b>${esc(a.action)}</b> <span class="hint">· ${esc(new Date(a.at).toLocaleString())}</span></summary>
+        ${a.detail ? `<p class="hint">${esc(a.detail)}</p>` : ''}${evHtml(a.evidence)}</details>`).join('')}
+      ${d.activity.length > 1 ? `<button class="linkbtn" id="logAll">Show all ${d.activity.length} actions</button>` : ''}
     </section>` : ''}
 
     <section class="card"><h2>Wrap up</h2>
       ${d.checklistPdf ? `<button class="sec" id="pdfBtn">Open the filled checklist (PDF)</button>` : ''}
       ${(d.checklistPages || []).length ? evHtml(d.checklistPages) : ''}
-      ${reqBlock('checklist', st.checklist ? 'Fill out the checklist again' : 'Fill out the 2026 checklist')}
-      ${st.docs ? '<div class="doneMsg">Checklist uploaded to the tenant and property pages (Inspections folder).</div>' : reqBlock('docs', 'Upload the checklist to AppFolio', !!st.checklist)}
+      ${reqBlock('checklist', st.checklist ? 'Update the checklist with what\'s changed' : 'Fill out the 2026 checklist')}
+      ${st.checklist ? '<p class="hint">Updating keeps the filled checklist and only marks what\'s changed since last time.</p>' : ''}
+      ${reqBlock('docs', st.docs ? 'Upload the latest checklist again' : 'Upload the checklist to AppFolio', !!st.checklist)}
+      <p class="hint">Claude uploads it to the tenant page, and on the property page puts it and the Z Inspector report in the Inspections folder, then shows screenshots proving each one landed.</p>
       <button class="primary p-done" id="sentBtn">${st.sent ? '✓ Completed · reopen' : 'Mark completed'}</button>
       <p class="hint">Mark it completed any time, even if a step above didn't update.</p>
     </section>`;
@@ -355,6 +359,11 @@ function recRow([t, tf]) {
 }
 function wireDetail() {
   $('deskBack').onclick = () => history.back();
+  if ($('logAll')) $('logAll').onclick = () => {
+    const older = deskEl().querySelectorAll('[data-older]'), showing = !older[0].hidden;
+    older.forEach(el => { el.hidden = showing; });
+    $('logAll').textContent = showing ? `Show all ${older.length + 1} actions` : 'Show only the latest';
+  };
   if ($('pdfBtn')) $('pdfBtn').onclick = async () => {
     $('pdfBtn').textContent = 'Opening…';
     const w = window.open('', '_blank');
