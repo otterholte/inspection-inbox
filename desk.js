@@ -273,6 +273,10 @@ function renderDetail(keepScroll) {
     <section class="card"><h2>Email to the owner</h2>
       <label for="owner">Greeting</label><input type="text" id="owner" value="${esc(f.owner)}">
       ${d.ownerUrl ? `<a class="sec ownerlink" href="${esc(d.ownerUrl)}" target="_blank" rel="noopener">Open ${esc(d.ownerName || 'the owner')} in AppFolio ↗</a>` : ''}
+      <label for="subjectText">Subject</label>
+      <div class="mline"><input type="text" id="subjectText" value="${esc(`Inspection – ${d.property}`)}" aria-label="Email subject">
+        <button class="sec" id="copySubject" type="button">Copy</button></div>
+      <label for="emailText">Message</label>
       <textarea class="edit-box" id="emailText" aria-label="Email to the owner" style="min-height:320px"></textarea>
       <p class="hint" id="emailEdited"></p>
       <button class="sec" id="copyBody">Copy message</button>
@@ -376,6 +380,7 @@ function wireDetail() {
   $('addRec').onclick = () => { $('recs').insertAdjacentHTML('beforeend', recRow(['', ''])); $('recs').lastElementChild.querySelector('input').focus(); };
   $('copyZ').onclick = () => copyText($('zText').value, 'zText', 'zMsg', 'Notes copied. Paste them into Z Inspector.');
   $('copyBody').onclick = () => copyText($('emailText').value, 'emailText', 'copyMsg', 'Message copied.');
+  $('copySubject').onclick = () => copyText($('subjectText').value, 'subjectText', 'copyMsg', 'Subject copied.');
   $('addMore').onclick = async () => { await save(); history.pushState({ view: 'inbox' }, ''); openInbox(D.current.data.property, D.current.data.date); };
   // Typing in either box keeps your wording; "Use the generated version" goes back to the automatic text.
   for (const [box, key] of [['zText', 'z'], ['emailText', 'email']]) $(box).addEventListener('input', () => {
