@@ -2,7 +2,7 @@
 // typed black Helvetica, X marks in the left column, notes on each line's blank, circles, initials.
 // The blank form and its line positions live in Eli's private Drive, not in this public repo.
 const FORM_PDF_ID = '1nLQXUh4l33cBD00bhDn8tXmD9DnzUF6a';
-const FORM_LAYOUT_ID = '1pFuZpBEqKcY9_hytF4TamsI0Q6WoMdTr';
+const FORM_LAYOUT_ID = '18kJV9TM7d8YkvCPdenqYrWH4LKq80aPB';
 const NEVER_MARK = ['Turn in inspection sheets weekly'];
 // Page-2 lines that follow from the Desk's progress.
 const EMAIL_LINES = ['A link to the inspection', 'A review of the condition', 'Minimum 3 proactive', 'A date and time'];
