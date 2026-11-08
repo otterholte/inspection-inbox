@@ -277,6 +277,11 @@ function renderDetail(keepScroll) {
       <button class="sec" id="copyBody">Copy message</button>
       ${reqBlock('email', st.email ? 'Draft it again in AppFolio' : 'Draft it in AppFolio', !!st.link)}
       ${st.link ? '' : '<p class="hint">Available once the Z Inspector link is in.</p>'}
+      <p class="hint" style="margin-top:4px">Did it yourself from another device? Tap one; Claude then updates the checklist to match.</p>
+      <div class="grid2">
+        <button class="sec" id="iDrafted" ${st.email ? 'disabled' : ''}>${st.email ? '✓ Drafted' : 'I drafted it'}</button>
+        <button class="sec" id="iSent" ${st.sent ? 'disabled' : ''}>${st.sent ? '✓ Sent' : 'I sent it'}</button>
+      </div>
       <p class="saved" id="copyMsg"></p>
     </section>
 
@@ -314,6 +319,17 @@ function recRow([t, tf]) {
 }
 function wireDetail() {
   $('deskBack').onclick = () => history.back();
+  // Marking the email done by hand also asks Claude to bring the checklist up to date.
+  const markEmail = async sent => {
+    await save();
+    const steps = { ...(D.current.data.steps || {}), email: true, ...(sent ? { sent: true } : {}) };
+    const requests = { ...(D.current.data.requests || {}), email: { state: 'done', at: new Date().toISOString(), note: sent ? 'You sent the email yourself.' : 'You drafted the email yourself.' } };
+    if (steps.checklist) requests.checklist = { state: 'queued', at: new Date().toISOString() };
+    await patch({ steps, requests });
+    renderDetail(true);
+  };
+  if ($('iDrafted')) $('iDrafted').onclick = () => markEmail(false);
+  if ($('iSent')) $('iSent').onclick = () => markEmail(true);
   if ($('bookCall')) $('bookCall').onclick = async () => {
     $('bookCall').disabled = true; $('bookCall').textContent = 'Booking…'; $('callMsg').textContent = '';
     try {
