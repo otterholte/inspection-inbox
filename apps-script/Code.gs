@@ -5,7 +5,8 @@
  *   <root folder> / <property> / <file>
  *
  * Config comes from Script Properties, or from a Secrets.gs file kept out of the public repo:
- *   UPLOAD_TOKEN    required; requests without it are rejected
+ *   UPLOAD_TOKEN    long token for Claude Code on the PC
+ *   APP_TOKEN       token the phone app derives from its access code
  *   ROOT_FOLDER_ID  Drive folder to save into (default: a folder named "Inspections Inbox")
  *   CALENDAR_ID     calendar for scheduleCall (calls are refused until this is set)
  * Deploy as a Web app, Execute as: Me, Who has access: Anyone.
@@ -98,9 +99,9 @@ function atHour_(d, h) { const x = new Date(d); x.setHours(h, 0, 0, 0); return x
 function fmt_(d, pattern) { return Utilities.formatDate(d, Session.getScriptTimeZone(), pattern); }
 
 function checkToken_(token) {
-  const expected = config_('UPLOAD_TOKEN');
-  if (!expected) throw new Error('UPLOAD_TOKEN is not set');
-  if (token !== expected) throw new Error('Bad token');
+  const accepted = [config_('UPLOAD_TOKEN'), config_('APP_TOKEN')].filter(Boolean);
+  if (!accepted.length) throw new Error('UPLOAD_TOKEN is not set');
+  if (!token || accepted.indexOf(token) < 0) throw new Error('Bad token');
 }
 
 function rootFolder_() {

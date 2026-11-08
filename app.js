@@ -1,27 +1,18 @@
 const $ = id => document.getElementById(id);
 const KEY = 'inspection-inbox-v1';
 
-// ---- access code, asked each time the app is opened ----
-// Only the SHA-256 of the code lives in this public repo.
+// Upload endpoint (Apps Script web app). Useless without the key, which comes from the access code.
+const ENDPOINT = 'https://script.google.com/macros/s/AKfycby9yLYqCNJYxrktB-x-_Re82PkP21J5fhEfXCqy_h7Q8cQVMhmX7lfifYI_TH6t7QL5/exec';
+// Only the SHA-256 of the access code lives in this public repo.
 const PIN_HASH = 'b4a906ff5d63dd73f46a93d31d43b493da0c06d4e1e071d84584e3a1d550feae';
+let uploadKey = null;
+
 async function sha256(text) {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
   return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
 }
-function unlock() { document.body.classList.remove('locked'); $('lock').remove(); }
-try { if (sessionStorage.getItem(KEY + '-unlocked') === PIN_HASH) unlock(); } catch {}
-$('lockForm').onsubmit = async e => {
-  e.preventDefault();
-  if (await sha256($('pin').value) === PIN_HASH) {
-    try { sessionStorage.setItem(KEY + '-unlocked', PIN_HASH); } catch {}
-    unlock();
-  } else {
-    $('lockMsg').textContent = 'Wrong code.';
-    $('pin').value = '';
-  }
-};
 
-// ---- per-device settings (only ever stored in this phone's browser) ----
+// ---- per-device memory (recent properties) ----
 function loadState() {
   try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch { return {}; }
 }
@@ -31,44 +22,63 @@ function saveState(patch) {
   return s;
 }
 let state = loadState();
-// One-tap setup: a link ending in #setup=<base64 {"endpoint","token"}> fills Settings.
-// The part after # never leaves the phone, so the token isn't sent to GitHub.
-if (location.hash.startsWith('#setup=')) {
-  try {
-    const cfg = JSON.parse(atob(decodeURIComponent(location.hash.slice(7)).replace(/-/g, '+').replace(/_/g, '/')));
-    state = saveState({ endpoint: cfg.endpoint, token: cfg.token });
-  } catch {}
-  history.replaceState(null, '', location.pathname);
+
+// ---- access code, asked each time the app is opened ----
+async function unlock(pin) {
+  uploadKey = await sha256('inspection-inbox-upload:' + pin);
+  try { sessionStorage.setItem(KEY + '-pin', pin); } catch {}
+  document.body.classList.remove('locked');
+  $('lock').remove();
+  start();
 }
-$('endpoint').value = state.endpoint || '';
-$('token').value = state.token || '';
-$('property').value = state.lastProperty || '';
-renderRecent();
-if (!state.endpoint || !state.token) $('settings').classList.remove('hidden');
-
-$('settingsBtn').onclick = () => $('settings').classList.toggle('hidden');
-$('saveSettings').onclick = () => {
-  state = saveState({ endpoint: $('endpoint').value.trim(), token: $('token').value.trim() });
-  $('settingsStatus').textContent = 'Saved.';
+(async () => {
+  let saved = null;
+  try { saved = sessionStorage.getItem(KEY + '-pin'); } catch {}
+  if (saved && await sha256(saved) === PIN_HASH) unlock(saved);
+})();
+$('lockForm').onsubmit = async e => {
+  e.preventDefault();
+  const pin = $('pin').value;
+  if (await sha256(pin) === PIN_HASH) unlock(pin);
+  else { $('lockMsg').textContent = 'Wrong code. Try again.'; $('pin').value = ''; }
 };
-$('testSettings').onclick = async () => {
-  $('settingsStatus').textContent = 'Testing…';
+
+function start() {
+  $('property').value = state.lastProperty || '';
+  renderRecent();
+  checkConnection();
+}
+async function checkConnection() {
   try {
-    const url = new URL($('endpoint').value.trim());
-    url.searchParams.set('token', $('token').value.trim());
-    const r = await fetch(url).then(r => r.json());
-    $('settingsStatus').textContent = r.ok ? `Connected. Files go to “${r.root}” in Google Drive.` : `Error: ${r.error}`;
-  } catch (e) {
-    $('settingsStatus').textContent = 'Could not reach the upload URL.';
-  }
-};
+    const r = await fetch(`${ENDPOINT}?token=${uploadKey}`).then(r => r.json());
+    setConn(r.ok, r.ok ? 'Connected' : 'Not connected');
+  } catch { setConn(false, 'Offline'); }
+}
+function setConn(ok, text) {
+  $('connDot').className = 'dot ' + (ok ? 'on' : 'off');
+  $('connText').textContent = text;
+}
 
+// ---- property ----
 function renderRecent() {
-  $('recentProps').innerHTML = (state.recent || []).map(p => `<option value="${p.replace(/"/g, '&quot;')}">`).join('');
+  const box = $('recent');
+  box.innerHTML = '';
+  for (const p of (state.recent || []).slice(0, 6)) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = p;
+    b.onclick = () => { $('property').value = p; };
+    box.appendChild(b);
+  }
 }
 function property() {
   const p = $('property').value.trim();
-  if (!p) { alert('Enter the property address first.'); $('property').focus(); return null; }
+  if (!p) {
+    const card = $('propCard');
+    card.classList.remove('need'); void card.offsetWidth; card.classList.add('need');
+    $('property').focus();
+    return null;
+  }
   const recent = [p, ...(state.recent || []).filter(x => x !== p)].slice(0, 15);
   state = saveState({ lastProperty: p, recent });
   renderRecent();
@@ -76,6 +86,11 @@ function property() {
 }
 
 // ---- upload ----
+const KIND_ICON = {
+  'voice-memo': ['var(--memo-soft)', 'var(--memo)', '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>'],
+  'checklist-scan': ['var(--scan-soft)', 'var(--scan)', '<path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M7 12h10"/>'],
+  'note': ['var(--note-soft)', 'var(--note)', '<path d="M4 20h4L19 9l-4-4L4 16v4z"/>'],
+};
 function stamp() {
   const d = new Date(), z = n => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}_${z(d.getHours())}${z(d.getMinutes())}${z(d.getSeconds())}`;
@@ -88,40 +103,39 @@ function toBase64(blob) {
     r.readAsDataURL(blob);
   });
 }
-function addQueueItem(name) {
+function addQueueItem(name, kind, prop) {
   const q = $('queue');
-  if (q.querySelector('.muted')) q.innerHTML = '';
+  if (q.querySelector('.empty')) q.innerHTML = '';
+  const [bg, fg, path] = KIND_ICON[kind];
   const li = document.createElement('li');
-  li.innerHTML = `<span></span><span class="st">Uploading…</span>`;
-  li.firstChild.textContent = name;
+  li.innerHTML = `<span class="k" style="background:${bg};color:${fg}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${path}</svg></span>
+    <span class="n"><div></div><small></small></span><span class="pill">Uploading…</span>`;
+  li.querySelector('.n div').textContent = name;
+  li.querySelector('.n small').textContent = prop;
   q.prepend(li);
-  return li.querySelector('.st');
+  return li.querySelector('.pill');
 }
 async function upload(blob, filename, kind, prop) {
-  if (!state.endpoint || !state.token) {
-    $('settings').classList.remove('hidden');
-    alert('Add the upload URL and token in Settings first.');
-    return false;
-  }
-  const st = addQueueItem(filename);
+  const st = addQueueItem(filename, kind, prop);
   try {
     const body = JSON.stringify({
-      token: state.token, property: prop, kind, filename,
+      token: uploadKey, property: prop, kind, filename,
       mimeType: blob.type || 'application/octet-stream', data: await toBase64(blob),
     });
     // text/plain keeps this a "simple" request so Apps Script needs no CORS preflight.
-    const r = await fetch(state.endpoint, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body })
+    const r = await fetch(ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body })
       .then(r => r.json());
     if (!r.ok) throw new Error(r.error);
-    st.textContent = '✓ Saved'; st.className = 'st st-ok';
+    st.textContent = '✓ Saved'; st.className = 'pill ok';
     return true;
   } catch (e) {
-    st.textContent = '✗ ' + (e.message || 'Failed'); st.className = 'st st-err';
+    st.textContent = 'Failed'; st.className = 'pill err';
+    st.title = e.message || '';
     return false;
   }
 }
 
-// ---- voice memo: pick files ----
+// ---- voice memo: pick a file ----
 $('audioFile').onchange = async e => {
   const prop = property(); if (!prop) { e.target.value = ''; return; }
   for (const f of e.target.files) {
@@ -131,35 +145,75 @@ $('audioFile').onchange = async e => {
   e.target.value = '';
 };
 
-// ---- voice memo: record in app ----
-let rec = null, chunks = [], timerId = null, startedAt = 0;
+// ---- voice memo: record in app (pause / resume / cancel) ----
+let rec = null, recStream = null, chunks = [], timerId = null, elapsed = 0, segStart = 0, recProp = '', discard = false;
+const fmtTime = ms => { const s = Math.floor(ms / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+function recElapsed() { return elapsed + (rec && rec.state === 'recording' ? Date.now() - segStart : 0); }
+function recTick() {
+  $('recTime').textContent = fmtTime(recElapsed());
+  $('recSub').textContent = rec && rec.state === 'paused' ? `Paused · ${fmtTime(recElapsed())}` : `${fmtTime(recElapsed())} · recording`;
+}
+function recUI(on) {
+  $('recPanel').classList.toggle('hidden', !on);
+  $('recBtn').classList.toggle('recording', on);
+  $('recTitle').textContent = on ? '● Recording' : 'Record memo';
+  $('recTitle').classList.toggle('pulse', on);
+  if (!on) $('recSub').textContent = 'Talk through what you see';
+}
 $('recBtn').onclick = async () => {
-  if (rec) { rec.stop(); return; }
+  if (rec) { $('recPanel').scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
   const prop = property(); if (!prop) return;
-  let stream;
-  try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+  try { recStream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
   catch { alert('Microphone access was blocked.'); return; }
+  closePanels();
   const type = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm'].find(t => window.MediaRecorder && MediaRecorder.isTypeSupported(t)) || '';
-  rec = new MediaRecorder(stream, type ? { mimeType: type } : undefined);
-  chunks = [];
+  rec = new MediaRecorder(recStream, type ? { mimeType: type } : undefined);
+  chunks = []; elapsed = 0; segStart = Date.now(); recProp = prop; discard = false;
   rec.ondataavailable = ev => ev.data.size && chunks.push(ev.data);
   rec.onstop = async () => {
-    stream.getTracks().forEach(t => t.stop());
-    clearInterval(timerId); $('recTimer').textContent = '';
-    $('recBtn').textContent = '🎤 Record'; $('recBtn').classList.remove('rec');
+    recStream.getTracks().forEach(t => t.stop());
+    clearInterval(timerId);
     const blob = new Blob(chunks, { type: rec.mimeType || 'audio/webm' });
-    rec = null;
-    const ext = blob.type.includes('mp4') ? '.m4a' : '.webm';
-    await upload(blob, `memo_${stamp()}${ext}`, 'voice-memo', prop);
+    rec = null; chunks = [];
+    recUI(false);
+    $('recPanel').classList.remove('paused'); $('recPause').textContent = 'Pause'; $('recState').textContent = 'Recording';
+    if (!discard) await upload(blob, `memo_${stamp()}${blob.type.includes('mp4') ? '.m4a' : '.webm'}`, 'voice-memo', recProp);
   };
   rec.start(1000);
-  startedAt = Date.now();
-  $('recBtn').textContent = '■ Stop & upload'; $('recBtn').classList.add('rec');
-  timerId = setInterval(() => {
-    const s = Math.floor((Date.now() - startedAt) / 1000);
-    $('recTimer').textContent = `● ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-  }, 500);
+  recUI(true);
+  recTick(); timerId = setInterval(recTick, 250);
+  $('recPanel').scrollIntoView({ behavior: 'smooth', block: 'center' });
 };
+$('recPause').onclick = () => {
+  if (!rec) return;
+  if (rec.state === 'recording') {
+    rec.pause(); elapsed += Date.now() - segStart;
+    $('recPause').textContent = 'Resume'; $('recState').textContent = 'Paused'; $('recPanel').classList.add('paused');
+  } else if (rec.state === 'paused') {
+    rec.resume(); segStart = Date.now();
+    $('recPause').textContent = 'Pause'; $('recState').textContent = 'Recording'; $('recPanel').classList.remove('paused');
+  }
+  recTick();
+};
+$('recCancel').onclick = () => {
+  if (!rec) return;
+  if (recElapsed() > 5000 && !confirm('Delete this recording without uploading it?')) return;
+  discard = true; rec.stop();
+};
+$('recDone').onclick = () => { if (rec) { discard = false; rec.stop(); } };
+
+// ---- panels (upload memo / scan / note) ----
+const PANELS = [['memoBtn', 'memoHelp'], ['scanBtn', 'scanPanel'], ['noteBtn', 'notePanel']];
+function closePanels() { for (const [b, p] of PANELS) { $(p).classList.add('hidden'); $(b).classList.remove('active'); } }
+function togglePanel(btn, panel) {
+  const open = $(panel).classList.contains('hidden');
+  closePanels();
+  if (open) { $(panel).classList.remove('hidden'); $(btn).classList.add('active'); $(panel).scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+  return open;
+}
+$('memoBtn').onclick = () => { if (property()) togglePanel('memoBtn', 'memoHelp'); };
+$('scanBtn').onclick = () => togglePanel('scanBtn', 'scanPanel');
+$('noteBtn').onclick = () => { if (togglePanel('noteBtn', 'notePanel')) $('note').focus(); };
 
 // ---- checklist scan ----
 const pages = { front: null, back: null };
@@ -187,15 +241,24 @@ async function cleanPage(file) {
   ctx.putImageData(d, 0, 0);
   return c;
 }
+function showPage(side) {
+  const slot = $(side + 'Slot'), img = $(side + 'Prev'), tag = slot.querySelector('.tag');
+  const has = !!pages[side];
+  slot.classList.toggle('filled', has);
+  img.classList.toggle('hidden', !has); tag.classList.toggle('hidden', !has);
+  if (has) img.src = pages[side].toDataURL('image/jpeg', 0.6); else img.removeAttribute('src');
+  $('sendScan').disabled = !(pages.front && pages.back);
+  $('sendScan').textContent = pages.front && pages.back ? 'Upload scan (2 pages)' : `Take the ${pages.front ? 'back' : 'front'} photo`;
+}
 for (const side of ['front', 'back']) {
   $(side + 'Img').onchange = async e => {
     const f = e.target.files[0]; if (!f) return;
     pages[side] = await cleanPage(f);
-    $(side + 'Prev').src = pages[side].toDataURL('image/jpeg', 0.6);
-    $('sendScan').disabled = !(pages.front && pages.back);
+    showPage(side);
     e.target.value = '';
   };
 }
+showPage('front');
 $('sendScan').onclick = async () => {
   const prop = property(); if (!prop) return;
   const { jsPDF } = window.jspdf;
@@ -208,10 +271,9 @@ $('sendScan').onclick = async () => {
     pdf.addImage(c.toDataURL('image/jpeg', 0.82), 'JPEG', (8.5 - w) / 2, (11 - h) / 2, w, h);
   });
   $('sendScan').disabled = true;
-  const ok = await upload(pdf.output('blob'), `checklist-scan_${stamp()}.pdf`, 'checklist-scan', prop);
-  if (ok) {
+  if (await upload(pdf.output('blob'), `checklist-scan_${stamp()}.pdf`, 'checklist-scan', prop)) {
     pages.front = pages.back = null;
-    $('frontPrev').removeAttribute('src'); $('backPrev').removeAttribute('src');
+    showPage('front'); showPage('back');
   } else {
     $('sendScan').disabled = false;
   }
@@ -219,7 +281,7 @@ $('sendScan').onclick = async () => {
 
 // ---- quick note ----
 $('sendNote').onclick = async () => {
-  const text = $('note').value.trim(); if (!text) return;
+  const text = $('note').value.trim(); if (!text) { $('note').focus(); return; }
   const prop = property(); if (!prop) return;
   if (await upload(new Blob([text], { type: 'text/plain' }), `note_${stamp()}.txt`, 'note', prop)) $('note').value = '';
 };
