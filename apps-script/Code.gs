@@ -2,16 +2,22 @@
  * Inspection Inbox upload endpoint (Google Apps Script web app).
  *
  * Saves files posted by the Inspection Inbox phone app into
- *   My Drive / Inspections Inbox / <property> / <file>
+ *   <root folder> / <property> / <file>
  *
- * Setup (once):
- *   1. Project Settings -> Script Properties -> add UPLOAD_TOKEN = <long random string>.
- *   2. Deploy -> New deployment -> Web app. Execute as: Me. Who has access: Anyone.
- *   3. Paste the web app URL and the same token into the phone app's Settings.
- * Requests without the matching token are rejected.
+ * Config comes from Script Properties, or from a Secrets.gs file kept out of the public repo:
+ *   UPLOAD_TOKEN    required; requests without it are rejected
+ *   ROOT_FOLDER_ID  Drive folder to save into (default: a folder named "Inspections Inbox")
+ *   CALENDAR_ID     calendar for scheduleCall (calls are refused until this is set)
+ * Deploy as a Web app, Execute as: Me, Who has access: Anyone.
  */
 
 const ROOT_FOLDER_NAME = 'Inspections Inbox';
+
+function config_(key) {
+  const fromProps = PropertiesService.getScriptProperties().getProperty(key);
+  if (fromProps) return fromProps;
+  return typeof SECRETS !== 'undefined' ? SECRETS[key] : null;
+}
 
 function doPost(e) {
   try {
@@ -55,7 +61,10 @@ const MIN_DAYS_AHEAD = 2;
 const WEEKS_TO_SEARCH = 4;
 
 function scheduleCall_(body) {
-  const cal = CalendarApp.getDefaultCalendar();
+  const calId = config_('CALENDAR_ID');
+  if (!calId) throw new Error('CALENDAR_ID is not set, so calls are not booked by this script');
+  const cal = CalendarApp.getCalendarById(calId);
+  if (!cal) throw new Error('No access to calendar ' + calId);
   const now = new Date();
   let day = nextWeekday_(now, CALL_WEEKDAY, body.minDaysAhead || MIN_DAYS_AHEAD);
 
@@ -89,12 +98,14 @@ function atHour_(d, h) { const x = new Date(d); x.setHours(h, 0, 0, 0); return x
 function fmt_(d, pattern) { return Utilities.formatDate(d, Session.getScriptTimeZone(), pattern); }
 
 function checkToken_(token) {
-  const expected = PropertiesService.getScriptProperties().getProperty('UPLOAD_TOKEN');
-  if (!expected) throw new Error('UPLOAD_TOKEN is not set in Script Properties');
+  const expected = config_('UPLOAD_TOKEN');
+  if (!expected) throw new Error('UPLOAD_TOKEN is not set');
   if (token !== expected) throw new Error('Bad token');
 }
 
 function rootFolder_() {
+  const id = config_('ROOT_FOLDER_ID');
+  if (id) return DriveApp.getFolderById(id);
   const it = DriveApp.getFoldersByName(ROOT_FOLDER_NAME);
   return it.hasNext() ? it.next() : DriveApp.createFolder(ROOT_FOLDER_NAME);
 }

@@ -31,6 +31,15 @@ function saveState(patch) {
   return s;
 }
 let state = loadState();
+// One-tap setup: a link ending in #setup=<base64 {"endpoint","token"}> fills Settings.
+// The part after # never leaves the phone, so the token isn't sent to GitHub.
+if (location.hash.startsWith('#setup=')) {
+  try {
+    const cfg = JSON.parse(atob(decodeURIComponent(location.hash.slice(7)).replace(/-/g, '+').replace(/_/g, '/')));
+    state = saveState({ endpoint: cfg.endpoint, token: cfg.token });
+  } catch {}
+  history.replaceState(null, '', location.pathname);
+}
 $('endpoint').value = state.endpoint || '';
 $('token').value = state.token || '';
 $('property').value = state.lastProperty || '';
