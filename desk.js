@@ -347,7 +347,7 @@ function renderDetail(keepScroll) {
     </section>
 
     ${(d.activity || []).length ? `<section class="card"><h2>Claude's work log <span class="pilltag">${d.activity.length} action${d.activity.length > 1 ? 's' : ''}</span></h2>
-      ${[...d.activity].reverse().map((a, i) => `<details class="logitem" ${i >= 3 ? 'data-older hidden' : ''}>
+      ${[...d.activity].sort((x, y) => String(y.at).localeCompare(String(x.at))).map((a, i) => `<details class="logitem" ${i >= 3 ? 'data-older hidden' : ''}>
         <summary><b>${esc(a.action)}</b> <span class="hint">· ${esc(new Date(a.at).toLocaleString())}</span></summary>
         ${a.detail ? `<p class="hint">${esc(a.detail)}</p>` : ''}${evHtml(a.evidence)}</details>`).join('')}
       ${d.activity.length > 3 ? `<button class="linkbtn" id="logAll">Show all ${d.activity.length} actions</button>` : ''}
