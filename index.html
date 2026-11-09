@@ -183,6 +183,9 @@
   #deskView .sec { padding: 0 14px; }
   .backbtn { justify-self: start; min-height: 40px; }
   .seg-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+  .gapbar { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; font-size: .8rem; font-weight: 700; color: var(--muted); }
+  .gapbar button { border: 1px solid var(--line); background: var(--card); color: var(--text); border-radius: 999px; padding: 5px 11px; font-weight: 700; font-size: .78rem; }
+  .gapbar button[aria-pressed="true"] { background: #b42318; color: #fff; border-color: #b42318; }
   .seg-tabs button { border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 7px 14px; font-weight: 700; font-size: .85rem; }
   .seg-tabs button[aria-pressed="true"] { background: var(--text); color: var(--bg); border-color: var(--text); }
   .item { display: grid; gap: 6px; width: 100%; text-align: left; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 14px 16px; box-shadow: var(--shadow); }
@@ -388,7 +391,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="app.js?v=22"></script>
-<script src="desk.js?v=30"></script>
+<script src="desk.js?v=31"></script>
 <script src="checklist.js?v=22"></script>
 </body>
 </html>

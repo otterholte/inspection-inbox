@@ -29,7 +29,10 @@ async function api(action, body = {}) {
 }
 
 const D = { docs: [], filter: 'open', current: null, dirty: false, poll: null };
-try { D.filter = localStorage.getItem('desk-filter') || 'open'; } catch {}
+try { D.filter = localStorage.getItem('desk-filter') || 'open'; D.missing = localStorage.getItem('desk-missing') || ''; } catch {}
+// Quick filters for audit gaps; they narrow whichever of Open / Completed / All is picked.
+const GAPS = ['Utilities', 'Insurance', 'Pets'];
+const hasGap = (d, label) => (d.checks || []).some(c => c.label === label && c.status === 'No');
 const flags = d => d.steps || {};
 // Done = email sent AND checklist uploaded to AppFolio, unless Eli marked it completed (or reopened it) by hand.
 const isDone = d => flags(d).completed ?? !!(flags(d).sent && flags(d).docs);
@@ -102,7 +105,8 @@ function renderDeskList() {
     if (D.current || document.hidden || deskEl().classList.contains('hidden') || D.selMode) return;
     try { D.docs = (await api('desk.list')).docs; renderDeskList(); } catch {}
   }, 20000);
-  const shown = D.docs.filter(d => D.filter === 'all' ? true : D.filter === 'open' ? !isDone(d) : isDone(d))
+  const inTab = d => D.filter === 'all' ? true : D.filter === 'open' ? !isDone(d) : isDone(d);
+  const shown = D.docs.filter(d => inTab(d) && (!D.missing || hasGap(d, D.missing)))
     .sort((a, b) => String(b.date).localeCompare(String(a.date)));
   const counts = { open: D.docs.filter(d => !isDone(d)).length, completed: D.docs.filter(isDone).length, all: D.docs.length };
   const queued = D.docs.reduce((n, d) => n + queuedCount(d), 0);
@@ -117,6 +121,10 @@ function renderDeskList() {
       </div>
       ${shown.length ? `<button class="linkbtn" id="selToggle">${D.selMode ? 'Done' : 'Select'}</button>` : ''}
     </div>
+    <div class="gapbar" role="group" aria-label="Show only inspections missing">
+      <span>Missing:</span>
+      ${GAPS.map(g => `<button data-gap="${g}" aria-pressed="${D.missing === g}">${g} · ${D.docs.filter(d => inTab(d) && hasGap(d, g)).length}</button>`).join('')}
+    </div>
     ${D.selMode ? `<div class="selbar"><span>${picked.length} selected${D.filter !== 'completed' ? '' : ''}</span>
       <button class="linkbtn" id="selAll">${picked.length === shown.length ? 'Clear' : 'Select all'}</button></div>
       <p class="hint" style="margin:-6px 0 0">Tap to pick. On a computer, shift-click picks everything in between.</p>` : ''}
@@ -128,10 +136,15 @@ function renderDeskList() {
         <span class="top">${D.selMode ? `<span class="tick" aria-hidden="true">${on ? '✓' : ''}</span>` : ''}<strong>${esc(d.property)}</strong><span class="status ${cls}">${esc(label)}</span></span>
         <span class="meta">${esc(d.ownerName || 'Owner not looked up yet')} · inspected ${esc(fmtShort(d.date))}${D.selMode && !d.checklistPdf ? ' · no checklist yet' : ''}</span>
         ${chips ? `<span class="chipsrow">${chips}</span>` : ''}</button>`;
-    }).join('') : `<section class="card empty"><p class="hint">${D.docs.length ? 'Nothing in this list.' : 'No inspections yet. Tap + New inspection to add one.'}</p></section>`}
+    }).join('') : `<section class="card empty"><p class="hint">${D.docs.length ? (D.missing ? `Nothing here is missing ${D.missing.toLowerCase()}.` : 'Nothing in this list.') : 'No inspections yet. Tap + New inspection to add one.'}</p></section>`}
     ${D.selMode ? `<div class="dlbar"><button class="primary" id="dlBtn" ${pickedPdfs.length ? '' : 'disabled'}>Download ${pickedPdfs.length || ''} checklist${pickedPdfs.length === 1 ? '' : 's'} as one PDF</button>
       <p class="hint" id="dlMsg">${picked.length > pickedPdfs.length ? `${picked.length - pickedPdfs.length} picked inspection${picked.length - pickedPdfs.length > 1 ? 's have' : ' has'} no checklist yet and will be skipped.` : ''}</p></div>` : ''}`;
   $('newInsp').onclick = () => { history.pushState({ view: 'inbox' }, ''); openInbox(); };
+  deskEl().querySelectorAll('[data-gap]').forEach(b => b.onclick = () => {
+    D.missing = D.missing === b.dataset.gap ? '' : b.dataset.gap;
+    try { localStorage.setItem('desk-missing', D.missing); } catch {}
+    renderDeskList();
+  });
   deskEl().querySelectorAll('[data-f]').forEach(b => b.onclick = () => { D.filter = b.dataset.f; try { localStorage.setItem('desk-filter', D.filter); } catch {} renderDeskList(); });
   if ($('selToggle')) $('selToggle').onclick = () => { D.selMode = !D.selMode; if (!D.selMode) D.sel.clear(); D.lastPick = null; renderDeskList(); };
   if ($('selAll')) $('selAll').onclick = () => {
