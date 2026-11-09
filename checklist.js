@@ -51,7 +51,16 @@ async function buildChecklistPdf(d) {
   for (const [label, val] of Object.entries(header)) {
     const L = layout.labels[label]; put(L.p, L.r[2] + 8, L.r[3] - 1, val, 11);
   }
-  (spec.top_notes || []).forEach((n, i) => put(0, 400, 52 + 14 * i, n, 9.5));
+  // Corner notes wrap to fit between x 400 and the page's right margin.
+  let ny = 52;
+  for (const n of spec.top_notes || []) {
+    let line = '';
+    for (const w of String(n).split(/\s+/)) {
+      const t = line ? line + ' ' + w : w;
+      if (line && font.widthOfTextAtSize(t, 9.5) > 190) { put(0, 400, ny, line, 9.5); ny += 11.5; line = w; } else line = t;
+    }
+    put(0, 400, ny, line, 9.5); ny += 14;
+  }
 
   for (const prefix of checklistMarks(d)) {
     const l = findLine(prefix), [, y0, , y1] = l.r, a = y0 - 1, b = y1 + 1;
