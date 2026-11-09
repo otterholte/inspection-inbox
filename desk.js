@@ -556,16 +556,24 @@ function buildZ() {
   if (v.recs.length) out.push('Recommendations:', ...v.recs.map(([t, tf]) => '- ' + t + (tf ? ' (' + tf + ')' : '')));
   return out.join('\n').trim() || 'No maintenance items yet.';
 }
+const Z_PLACEHOLDER = '[Z Inspector link — Claude adds this]';
+// Puts the newest Z Inspector link into an email Eli already edited, in place of the placeholder or an
+// older report link, without touching anything else he wrote.
+function withZLink(text, link) {
+  if (!link) return text;
+  if (text.includes(Z_PLACEHOLDER)) return text.split(Z_PLACEHOLDER).join(link);
+  return text.replace(/https?:\/\/[^\s]*zinspector[^\s]*?(?=[.,)]?(\s|$))/gi, link);
+}
 function buildEmail() {
   const d = D.current.data, v = readForm(), f = v.fields, good = d.goodCondition !== false;
   const out = [`Hi ${f.owner || '[owner]'},`, '',
-    `I completed the inspection at ${d.property} on ${fmtShort(d.date)}.` + (good ? ` You can view the full report with photos here: ${d.zLink || '[Z Inspector link — Claude adds this]'}` : ''), ''];
+    `I recently completed the inspection at ${d.property}.` + (good ? ` You can view the full report with photos here: ${d.zLink || Z_PLACEHOLDER}` : ''), ''];
   if (f.review.trim()) out.push('What I saw:', f.review.trim(), '');
   if (v.recs.length) { out.push('My recommendations:', ''); v.recs.forEach(([t, tf], i) => out.push(`${i + 1}. ${t}${tf ? ' – ' + tf : ''}`)); out.push('', ''); }
   const when = d.call?.booked || [fmtLong(v.call.date), fmtClock(v.call.time)].filter(Boolean).join(' at ');
   const altDay = v.call.alt ? fmtLong(v.call.alt).split(',')[0] : '';
   const goAhead = (f.goAhead ?? defaultGoAhead(v.recs)).trim();
-  out.push(`I'll give you a call on ${when || '[date and time]'} to go over this and answer any questions.` +
+  out.push(`I'll give you a call on ${when || '[date and time]'} to go over the inspection and answer any questions.` +
     (v.call.alt ? ` I'm also available on ${fmtLong(v.call.alt)} if that works better.` : '') +
     ` If that time doesn't work, please reply with a few better times${altDay ? ' on either of those days' : ''} and I'll reschedule.` +
     ` If this covers everything and you don't need a call, please reply to this email and let me know` +
@@ -585,6 +593,10 @@ function renderOutputs() {
   for (const [box, key, build, note] of [['zText', 'z', buildZ, 'zEdited'], ['emailText', 'email', buildEmail, 'emailEdited']]) {
     const el = $(box); if (!el) continue;
     const custom = typeof o[key] === 'string';
+    if (custom && key === 'email') {
+      const linked = withZLink(o.email, D.current.data.zLink);
+      if (linked !== o.email) { o.email = linked; D.current.data.overrides = { ...o }; changed(); }
+    }
     if (document.activeElement !== el) el.value = custom ? o[key] : build();
     $(note).innerHTML = custom ? 'Your edited version. Changes to the sections above won\'t update it. <button class="linkbtn" data-reset="' + key + '">Use the generated version</button>' : '';
   }
