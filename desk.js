@@ -382,7 +382,9 @@ function renderDetail(keepScroll) {
     </section>
 
     ${(d.audit || []).length ? `<section class="card"><h2>Audit checks</h2>
-      <div class="audit">${d.audit.map(a => `<div class="${a.status === 'Yes' || a.status === 'No' ? a.status : 'NA'}"><span>${esc(a.label)}${a.detail ? ' — ' + esc(a.detail) : ''}</span><strong>${esc(a.status)}</strong></div>`).join('')}</div>
+      <div class="audit">${d.audit.map((a, i) => `<div class="${a.status === 'Yes' || a.status === 'No' ? a.status : 'NA'}"><span>${esc(a.label)}${a.detail ? ' — ' + esc(a.detail) : ''}
+        <span class="arow">${a.status !== 'Yes' ? `<button class="linkbtn" data-aok="${i}">✓ It's fine</button>` : `<button class="linkbtn" data-ano="${i}">Mark as a problem</button>`}<button class="linkbtn" data-arm="${i}">Remove</button></span></span><strong>${esc(a.status)}</strong></div>`).join('')}</div>
+      <p class="hint">Tap “It's fine” when something checks out, or Remove for things you don't track. The list's Utilities / Insurance / Pets chips update too.</p>
       ${(ev.audit || []).length ? `<span class="src">Where this came from</span>${evHtml(ev.audit)}` : ''}
       ${(ev.property || []).length ? `<span class="src">Property pages</span>${evHtml(ev.property)}` : ''}
     </section>` : ''}
@@ -507,6 +509,7 @@ function wireDetail() {
   };
   if ($('remStatus')) api('desk.reminderStatus').then(r => { if ($('remStatus')) $('remStatus').textContent = r.triggerOn ? '✓ The 9 AM job is on.' : '⚠ The 9 AM job is off. Tell Claude to turn it back on.'; })
     .catch(() => { if ($('remStatus')) $('remStatus').textContent = ''; });
+  deskEl().querySelectorAll('[data-aok],[data-ano],[data-arm]').forEach(b => b.onclick = () => setAudit(b));
   if ($('logAll')) $('logAll').onclick = () => {
     const older = deskEl().querySelectorAll('[data-older]'), showing = !older[0].hidden;
     older.forEach(el => { el.hidden = showing; });
@@ -621,6 +624,21 @@ function nextWeekday(weekday, minDays) {
   return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}`;
 }
 // The morning-after reminder: when it goes out, whether the 9 AM job is on, and the calendar backup.
+// Eli's own fixes to the audit: mark a row fine, flag it again, or drop it. The matching list chip follows.
+const AUDIT_CHIP = { 'Utility account numbers': 'Utilities', "Renter's insurance": 'Insurance', 'Pet screening': 'Pets' };
+async function setAudit(b) {
+  const d = D.current.data, audit = (d.audit || []).map(a => ({ ...a }));
+  const i = Number(b.dataset.aok ?? b.dataset.ano ?? b.dataset.arm), row = audit[i]; if (!row) return;
+  busy(b, 'Saving…');
+  if (b.dataset.arm !== undefined) audit.splice(i, 1);
+  else row.status = b.dataset.aok !== undefined ? 'Yes' : 'No';
+  const chip = AUDIT_CHIP[row.label];
+  const checks = (d.checks || []).map(c => c.label === chip && b.dataset.arm === undefined ? { ...c, status: row.status } : c);
+  const now = new Date().toISOString();
+  const what = b.dataset.arm !== undefined ? 'Removed' : row.status === 'Yes' ? 'Marked fine' : 'Marked as a problem';
+  await patch({ audit, checks, activity: [...(d.activity || []), { at: now, action: `${what}: ${row.label}`, detail: 'Changed on the Desk.', evidence: [] }] });
+  renderDetail(true);
+}
 function reminderLine(d) {
   if (d.followupReminderSent) return `<p class="hint">✓ Reminder email sent ${esc(fmtShort(d.followupReminderSent.slice(0, 10)))}.</p>`;
   const at = d.call.reminderAt ? d.call.reminderAt.replace(/ at 9:00 AM$/, '') + ' around 9 AM' : 'the morning after the call';
