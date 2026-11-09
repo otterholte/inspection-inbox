@@ -451,6 +451,18 @@ function wireDetail() {
   deskEl().querySelectorAll('[data-req]').forEach(b => b.onclick = () => { busy(b, 'Sending…'); queueReq(b.dataset.req); });
   if (!D.current.data.steps?.processed) return;
   ['review', 'tenant', 'owner', 'goAhead', 'callDate', 'callTime', 'altDate'].forEach(k => $(k).addEventListener('input', changed));
+  if (!D.current.data.call?.booked && !D.current.slotChecked) {
+    // Pre-fill the first half hour that's actually free (unanswered invites count as busy), so the email shows the real time.
+    D.current.slotChecked = true;
+    const id = D.current.id;
+    api('desk.freeSlot', { date: $('callDate').value, time: $('callTime').value }).then(r => {
+      if (D.current?.id !== id || !r.time || !$('callTime') || D.current.data.call?.booked) return;
+      if (r.date === $('callDate').value && r.time === $('callTime').value) return;
+      $('callDate').value = r.date; $('callTime').value = r.time;
+      $('callTime').dispatchEvent(new Event('input'));
+      $('callMsg').textContent = 'Moved to the first free time on your calendar.';
+    }).catch(() => {});
+  }
   $('items').addEventListener('input', changed);
   $('recs').addEventListener('input', changed);
   $('items').addEventListener('click', e => {

@@ -38,6 +38,7 @@ function doPost(e) {
       case 'desk.image': return json_({ ok: true, ...imageGet_(body.id) });
       case 'desk.putImage': return json_({ ok: true, id: imagePut_(body) });
       case 'desk.bookCall': return json_({ ok: true, ...bookCall_(body.slug) });
+      case 'desk.freeSlot': return json_({ ok: true, ...freeSlot_(body.date, body.time) });
       case 'desk.calendarCheck': return json_({ ok: true, ...calendarCheck_() });
       case 'desk.testReminder': return json_({ ok: true, ...sendReminder_(body.slug, true) });
       default: return json_({ ok: true, ...upload_(body) });
@@ -142,7 +143,7 @@ function bookCall_(slug) {
     const end = new Date(slot.getTime() + CALL_MINUTES * 60000);
 
     const owner = doc.ownerName || 'owner';
-    const title = 'Tentative: Inspection follow-up call – ' + owner + ' (' + doc.property + ')';
+    const title = 'Inspection follow-up – ' + doc.property + ' (' + owner + ')';
     const phones = [].concat(doc.ownerPhones || doc.ownerPhone || []).filter(Boolean);
     const description = ['Call ' + owner + ' about the ' + doc.property + ' inspection (' + doc.date + ').',
       phones.length ? 'Phone: ' + phones.join(', ') : 'Phone: see the owner page in AppFolio',
@@ -188,6 +189,13 @@ function firstFree_(calendars, start, ignoreId) {
     day = new Date(day.getTime() + 7 * 86400000);
   }
   return null;
+}
+// Read-only: the first free half hour from the Desk's suggested date and time, so the Desk (and the email) show a time that's actually open.
+function freeSlot_(date, time) {
+  const tz = Session.getScriptTimeZone(), work = config_('WORK_EMAIL') || 'eli@thesourcepm.com';
+  const workCal = safeCal_(work), calendars = [CalendarApp.getDefaultCalendar()].concat(workCal ? [workCal] : []);
+  const slot = firstFree_(calendars, Utilities.parseDate(date + ' ' + (time || '10:00'), tz, 'yyyy-MM-dd HH:mm'), null);
+  return slot ? { date: Utilities.formatDate(slot, tz, 'yyyy-MM-dd'), time: Utilities.formatDate(slot, tz, 'HH:mm') } : {};
 }
 // Read-only: can this account see the work calendar's busy times? Counts events in the next 7 days.
 function calendarCheck_() {
