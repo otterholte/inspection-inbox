@@ -18,7 +18,7 @@ const STEPS = [
   ['email', 'Owner email drafted in AppFolio', 'email'],
   ['checklist', '2026 checklist filled out and initialed', 'checklist'],
   ['docs', 'Checklist uploaded to AppFolio', 'docs'],
-  ['sent', 'Email sent · completed', null],
+  ['sent', 'Email sent', null],
 ];
 
 async function api(action, body = {}) {
@@ -31,7 +31,8 @@ async function api(action, body = {}) {
 const D = { docs: [], filter: 'open', current: null, dirty: false, poll: null };
 try { D.filter = localStorage.getItem('desk-filter') || 'open'; } catch {}
 const flags = d => d.steps || {};
-const isDone = d => !!flags(d).sent;
+// Done = email sent AND checklist uploaded to AppFolio, unless Eli marked it completed (or reopened it) by hand.
+const isDone = d => flags(d).completed ?? !!(flags(d).sent && flags(d).docs);
 const queuedCount = d => Object.values(d.requests || {}).filter(r => r.state === 'queued').length;
 function statusOf(d) {
   if (isDone(d)) return ['Completed', 'st-done'];
@@ -346,10 +347,10 @@ function renderDetail(keepScroll) {
     </section>
 
     ${(d.activity || []).length ? `<section class="card"><h2>Claude's work log <span class="pilltag">${d.activity.length} action${d.activity.length > 1 ? 's' : ''}</span></h2>
-      ${[...d.activity].reverse().map((a, i) => `<details class="logitem" ${i ? 'data-older hidden' : ''}>
+      ${[...d.activity].reverse().map((a, i) => `<details class="logitem" ${i >= 3 ? 'data-older hidden' : ''}>
         <summary><b>${esc(a.action)}</b> <span class="hint">· ${esc(new Date(a.at).toLocaleString())}</span></summary>
         ${a.detail ? `<p class="hint">${esc(a.detail)}</p>` : ''}${evHtml(a.evidence)}</details>`).join('')}
-      ${d.activity.length > 1 ? `<button class="linkbtn" id="logAll">Show all ${d.activity.length} actions</button>` : ''}
+      ${d.activity.length > 3 ? `<button class="linkbtn" id="logAll">Show all ${d.activity.length} actions</button>` : ''}
     </section>` : ''}
 
     <section class="card"><h2>Wrap up</h2>
@@ -362,8 +363,8 @@ function renderDetail(keepScroll) {
         : reqBlock('checklist', 'Fill out the 2026 checklist')}
       ${reqBlock('docs', st.docs ? 'Upload the latest checklist again' : 'Upload the checklist to AppFolio', !!st.checklist)}
       <p class="hint">Claude uploads it to the tenant page, and on the property page puts it and the Z Inspector report in the Inspections folder, then shows screenshots proving each one landed.</p>
-      <button class="primary p-done" id="sentBtn">${st.sent ? '✓ Completed · reopen' : 'Mark completed'}</button>
-      <p class="hint">Mark it completed any time, even if a step above didn't update.</p>
+      <button class="primary p-done" id="sentBtn">${isDone(d) ? '✓ Completed · reopen' : 'Mark completed'}</button>
+      <p class="hint">It completes on its own once the email is sent and the checklist is uploaded to AppFolio. Use this only if a step didn't update.</p>
     </section>`;
   wireDetail();
   if (keepScroll) window.scrollTo(0, y);
@@ -420,7 +421,7 @@ function wireDetail() {
   if ($('logAll')) $('logAll').onclick = () => {
     const older = deskEl().querySelectorAll('[data-older]'), showing = !older[0].hidden;
     older.forEach(el => { el.hidden = showing; });
-    $('logAll').textContent = showing ? `Show all ${older.length + 1} actions` : 'Show only the latest';
+    $('logAll').textContent = showing ? `Show all ${older.length + 3} actions` : 'Show only the latest 3';
   };
   if ($('pdfBtn')) $('pdfBtn').onclick = async () => {
     $('pdfBtn').textContent = 'Opening…';
@@ -457,7 +458,7 @@ function wireDetail() {
   });
 
   $('zDone').onclick = async () => { busy($('zDone'), 'Saving…'); await save(); await patch({ steps: { ...D.current.data.steps, zinspector: true } }); queueReq('link'); };
-  $('sentBtn').onclick = async () => { busy($('sentBtn'), 'Saving…'); await save(); await patch({ steps: { ...D.current.data.steps, sent: !D.current.data.steps?.sent } }); renderDetail(true); };
+  $('sentBtn').onclick = async () => { busy($('sentBtn'), 'Saving…'); await save(); await patch({ steps: { ...D.current.data.steps, completed: !isDone(D.current.data) } }); renderDetail(true); };
   renderOutputs();
 }
 
