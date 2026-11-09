@@ -37,7 +37,7 @@ function doPost(e) {
       case 'desk.update': return json_({ ok: true, version: deskWrite_(body.slug, body.patch, body.ifVersion, true) });
       case 'desk.image': return json_({ ok: true, ...imageGet_(body.id) });
       case 'desk.putImage': return json_({ ok: true, id: imagePut_(body) });
-      case 'desk.bookCall': return json_({ ok: true, ...bookCall_(body.slug) });
+      case 'desk.bookCall': return json_({ ok: true, ...bookCall_(body.slug, body.zNotes) });
       case 'desk.freeSlot': return json_({ ok: true, ...freeSlot_(body.date, body.time) });
       case 'desk.deleteDraft': return json_({ ok: true, ...deleteDraft_(body.slug) });
       case 'desk.reminderStatus': return json_({ ok: true, triggerOn: ScriptApp.getProjectTriggers().some(t => t.getHandlerFunction() === 'sendFollowupReminders'), mailQuota: MailApp.getRemainingDailyQuota() });
@@ -134,7 +134,7 @@ function deepMerge_(a, b) {
 // work calendar right away as an unanswered (tentative) invite. Starts at the time chosen on the Desk;
 // if that slot is taken it moves to the next free half hour between 10 and 4 that Wednesday, then later Wednesdays.
 const CALL_MINUTES = 30, DAY_START = 10, DAY_END = 16, WEEKS_TO_TRY = 4;
-function bookCall_(slug) {
+function bookCall_(slug, zNotes) {
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
@@ -156,9 +156,12 @@ function bookCall_(slug) {
     const owner = doc.ownerName || 'owner';
     const title = 'Inspection follow-up – ' + doc.property + ' (' + owner + ')';
     const phones = [].concat(doc.ownerPhones || doc.ownerPhone || []).filter(Boolean);
+    // Z Inspector notes as they read on the Desk when the call was booked (kept from the last booking if none were sent).
+    const notes = String(zNotes == null ? call.zNotes || '' : zNotes).trim();
     const description = ['Call ' + owner + ' about the ' + doc.property + ' inspection (' + doc.date + ').',
       phones.length ? 'Phone: ' + phones.join(', ') : 'Phone: see the owner page in AppFolio',
-      doc.zLink ? 'Z Inspector report: ' + doc.zLink : '', 'Booked from the Inspection Desk.'].filter(Boolean).join('\n');
+      doc.zLink ? 'Z Inspector report: ' + doc.zLink : '',
+      notes ? '\nZ Inspector notes:\n' + notes + '\n' : '', 'Booked from the Inspection Desk.'].filter(Boolean).join('\n');
 
     let ev;
     if (existing) { ev = existing; ev.setTime(slot, end); ev.setTitle(title); ev.setDescription(description); }
@@ -172,7 +175,7 @@ function bookCall_(slug) {
     const same = existing && Math.abs(existing.getStartTime().getTime() - slot.getTime()) < 60000;
     const note = (same ? 'Still on your calendar: ' : existing ? 'Moved to ' : 'On your calendar: ') + booked + (moved ? ' (your first choice was taken)' : '') +
       '. Invite sent to ' + work + '. Reminder email and a calendar backup: ' + rem.at + (workCal ? '; checked your work calendar for conflicts.' : '; your work calendar isn\u2019t shared with this account, so only the personal calendar was checked for conflicts.');
-    doc.call = Object.assign({}, call, { eventId: ev.getId(), booked: booked, reminderEventId: rem.id, reminderAt: rem.at, bookedStart: slot.toISOString(),
+    doc.call = Object.assign({}, call, { zNotes: notes, eventId: ev.getId(), booked: booked, reminderEventId: rem.id, reminderAt: rem.at, bookedStart: slot.toISOString(),
       date: Utilities.formatDate(slot, tz, 'yyyy-MM-dd'), time: Utilities.formatDate(slot, tz, 'HH:mm') });
     doc.steps = Object.assign({}, doc.steps, { call: true });
     doc.requests = Object.assign({}, doc.requests, { call: { state: 'done', at: now, note: note } });

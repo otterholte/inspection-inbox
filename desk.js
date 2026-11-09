@@ -514,7 +514,8 @@ function wireDetail() {
     $('bookCall').disabled = true; $('bookCall').textContent = 'Booking…'; $('callMsg').textContent = '';
     try {
       await save();
-      await api('desk.bookCall', { slug: D.current.id });
+      // The invite carries the Z Inspector notes exactly as they read on screen (Eli's edits included).
+      await api('desk.bookCall', { slug: D.current.id, zNotes: $('zText') ? $('zText').value : '' });
       D.current.data = (await api('desk.get', { slug: D.current.id })).doc;
       renderDetail(true);
     } catch (e) {
