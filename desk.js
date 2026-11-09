@@ -328,7 +328,7 @@ function moreCard(d) {
     ${queued ? `<div class="waiting">${live ? 'Claude is working on' : 'Waiting for Claude:'} “${esc(r.instruction || '')}”${live ? '' : ' ' + RUN_HINT}${live}</div>` : ''}
     ${r?.state === 'done' && r.note ? `<div class="doneMsg">${esc(r.note)}</div>` : ''}
     ${r?.state === 'failed' ? `<div class="waiting">Claude couldn't finish this${r.note ? ': ' + esc(r.note) : ''}.</div>` : ''}
-    <textarea id="moreText" class="edit-box" placeholder="e.g. The side yard fence is leaning and could fall in a strong wind" ${queued ? 'disabled' : ''}></textarea>
+    <textarea id="moreText" class="edit-box" style="min-height:96px" placeholder="e.g. The side yard fence is leaning and could fall in a strong wind" ${queued ? 'disabled' : ''}></textarea>
     <button class="primary" id="moreSend" ${queued ? 'disabled' : ''}>Send to Claude</button>
   </section>`;
 }
