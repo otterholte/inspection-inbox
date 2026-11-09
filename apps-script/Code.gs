@@ -39,6 +39,7 @@ function doPost(e) {
       case 'desk.putImage': return json_({ ok: true, id: imagePut_(body) });
       case 'desk.bookCall': return json_({ ok: true, ...bookCall_(body.slug) });
       case 'desk.calendarCheck': return json_({ ok: true, ...calendarCheck_() });
+      case 'desk.testReminder': return json_({ ok: true, ...sendReminder_(body.slug, true) });
       default: return json_({ ok: true, ...upload_(body) });
     }
   } catch (err) {
@@ -81,7 +82,7 @@ function deskList_() {
     const d = readDoc_(f);
     // The list only needs summary fields; the page fetches the rest on open.
     out.push({ _id: f.getName().replace(/\.json$/, ''), _version: d._version, property: d.property, ownerName: d.ownerName,
-      date: d.date, steps: d.steps, requests: d.requests, checks: d.checks });
+      date: d.date, steps: d.steps, requests: d.requests, checks: d.checks, checklistPdf: d.checklistPdf || null });
   }
   return out;
 }
@@ -263,3 +264,66 @@ function json_(obj) {
 function authorizeCalendar() {
   Logger.log('Calendar access OK: ' + CalendarApp.getDefaultCalendar().getName());
 }
+
+
+// ---- Morning-after reminder ----
+// Once an inspection's email is marked sent, at 9 AM the day after its follow-up call this account emails
+// the work address: how did the call go, what the concerns were, and whether work orders are needed.
+const DESK_URL = 'https://otterholte.github.io/inspection-inbox/';
+
+// Run once from the editor: approves sending mail and starts the daily 9 AM check.
+function setupDailyReminder() {
+  ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === 'sendFollowupReminders').forEach(t => ScriptApp.deleteTrigger(t));
+  ScriptApp.newTrigger('sendFollowupReminders').timeBased().atHour(9).nearMinute(0).everyDays(1).inTimezone(Session.getScriptTimeZone()).create();
+  Logger.log('Daily 9 AM follow-up reminder is on. Mail quota left today: ' + MailApp.getRemainingDailyQuota());
+}
+
+function sendFollowupReminders() {
+  const tz = Session.getScriptTimeZone(), today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  const it = deskFolder_().getFiles();
+  while (it.hasNext()) {
+    const f = it.next();
+    if (!/\.json$/.test(f.getName())) continue;
+    const d = readDoc_(f), call = d.call || {};
+    if (!(d.steps || {}).sent || d.followupReminderSent) continue;
+    const callDay = call.bookedStart ? Utilities.formatDate(new Date(call.bookedStart), tz, 'yyyy-MM-dd') : call.date;
+    if (!callDay || callDay >= today) continue;   // the morning after the call, or later if it was missed
+    sendReminder_(f.getName().replace(/\.json$/, ''), false);
+  }
+}
+
+function reminderSubject_(d) { return 'Inspection follow-up – ' + d.property; }
+function sendReminder_(slug, isTest) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const f = docFile_(slug);
+    if (!f) throw new Error('Not found');
+    const d = readDoc_(f), call = d.call || {};
+    const now = (d.maintenance || []).filter(i => i.when !== 'later').map(i => i.text);
+    const later = (d.maintenance || []).filter(i => i.when === 'later').map(i => i.text);
+    const recs = (d.recs || []).map(r => r[0] + (r[1] ? ' (' + r[1] + ')' : ''));
+    const callText = call.booked || [call.date, call.time].filter(Boolean).join(' ');
+    const owner = d.ownerName || 'the owner';
+    const phones = [].concat(d.ownerPhones || []).join(', ');
+    const list = (title, items) => items.length ? '<p><b>' + title + '</b></p><ul>' + items.map(t => '<li>' + esc_(t) + '</li>').join('') + '</ul>' : '';
+    const html = '<p>How did the follow-up call with <b>' + esc_(owner) + '</b> go?</p>' +
+      '<p><b>Property:</b> ' + esc_(d.property) + '<br><b>Call:</b> ' + esc_(callText || 'not booked') + (phones ? '<br><b>Phone:</b> ' + esc_(phones) : '') +
+      (d.zLink ? '<br><b>Report:</b> <a href="' + d.zLink + '">' + d.zLink + '</a>' : '') + '</p>' +
+      list('Needs attention now', now) + list('Plan for later', later) + list('Recommendations you sent', recs) +
+      '<p><b>Do any of these need a work order?</b> If the owner didn\u2019t reply, it\u2019s worth putting them in so nothing gets missed.</p>' +
+      '<p><a href="' + DESK_URL + '">Open the Inspection Desk</a></p>';
+    const plain = html.replace(/<li>/g, '- ').replace(/<br>|<\/p>|<\/li>|<\/ul>/g, '\n').replace(/<[^>]+>/g, '').replace(/\n{3,}/g, '\n\n');
+    const subject = (isTest ? '[Test] ' : '') + reminderSubject_(d);
+    MailApp.sendEmail({ to: config_('WORK_EMAIL') || 'eli@thesourcepm.com', subject: subject, htmlBody: html, body: plain, name: 'Inspection Desk' });
+    if (!isTest) {
+      const at = new Date().toISOString();
+      d.followupReminderSent = at;
+      d.activity = (d.activity || []).concat([{ at: at, action: 'Sent you the follow-up reminder email', detail: subject + ' → ' + (config_('WORK_EMAIL') || 'eli@thesourcepm.com'), evidence: [] }]);
+      d._version = (d._version || 0) + 1;
+      f.setContent(JSON.stringify(d));
+    }
+    return { subject: subject };
+  } finally { lock.releaseLock(); }
+}
+function esc_(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]); }

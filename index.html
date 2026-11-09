@@ -153,6 +153,15 @@
   .ask .row2 { display: grid; grid-template-columns: auto 1fr; gap: 8px; }
   .mic.on { background: var(--rec); color: #fff; border-color: var(--rec); }
   .ownerlink { display: flex; align-items: center; justify-content: center; text-decoration: none; color: var(--brand-2); }
+  .listbar { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .selbar { display: flex; justify-content: space-between; align-items: center; font-weight: 700; font-size: .9rem; }
+  .item.selectable { user-select: none; }
+  .item.picked { border-color: var(--brand-2); background: var(--brand-soft); }
+  .tick { width: 22px; height: 22px; border-radius: 6px; border: 2px solid var(--line); display: inline-grid; place-items: center; font-size: .8rem; color: #fff; margin-right: 8px; flex: none; }
+  .item.picked .tick { background: var(--brand-2); border-color: var(--brand-2); }
+  .item .top { align-items: center; }
+  .dlbar { position: sticky; bottom: calc(env(safe-area-inset-bottom) + 8px); background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 12px; box-shadow: var(--shadow); display: grid; gap: 6px; }
+  .dlbar .hint { margin: 0; }
   .linkbtn { border: 0; background: none; color: var(--brand-2); font-weight: 600; padding: 0; text-align: left; }
 
   /* desk */
@@ -371,8 +380,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="app.js?v=17"></script>
-<script src="desk.js?v=17"></script>
-<script src="checklist.js?v=20"></script>
+<script src="app.js?v=21"></script>
+<script src="desk.js?v=21"></script>
+<script src="checklist.js?v=21"></script>
 </body>
 </html>

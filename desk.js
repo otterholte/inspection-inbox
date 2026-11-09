@@ -88,28 +88,81 @@ async function deskList() {
   catch (e) { deskEl().innerHTML = `<section class="card empty"><p class="hint">Couldn't load inspections (${esc(e.message)}). Pull down or reopen to try again.</p></section>`; return; }
   renderDeskList();
 }
+// Select mode: tap to pick, shift-click for a range, then download the picked checklists as one PDF.
+D.sel = new Set(); D.selMode = false; D.lastPick = null;
 function renderDeskList() {
   const shown = D.docs.filter(d => D.filter === 'all' ? true : D.filter === 'open' ? !isDone(d) : isDone(d))
     .sort((a, b) => String(b.date).localeCompare(String(a.date)));
   const counts = { open: D.docs.filter(d => !isDone(d)).length, completed: D.docs.filter(isDone).length, all: D.docs.length };
   const queued = D.docs.reduce((n, d) => n + queuedCount(d), 0);
+  const picked = [...D.sel].filter(id => shown.some(d => d._id === id));
+  const pickedPdfs = picked.filter(id => D.docs.find(d => d._id === id)?.checklistPdf);
   deskEl().innerHTML = `
     <button class="primary p-new" id="newInsp">+ New inspection</button>
     ${queued ? `<div class="banner">${queued} request${queued > 1 ? 's' : ''} waiting for Claude. ${RUN_HINT}</div>` : ''}
-    <div class="seg-tabs" role="group" aria-label="Filter">
-      ${['open', 'completed', 'all'].map(k => `<button data-f="${k}" aria-pressed="${D.filter === k}">${k[0].toUpperCase() + k.slice(1)} · ${counts[k]}</button>`).join('')}
+    <div class="listbar">
+      <div class="seg-tabs" role="group" aria-label="Filter">
+        ${['open', 'completed', 'all'].map(k => `<button data-f="${k}" aria-pressed="${D.filter === k}">${k[0].toUpperCase() + k.slice(1)} · ${counts[k]}</button>`).join('')}
+      </div>
+      ${shown.length ? `<button class="linkbtn" id="selToggle">${D.selMode ? 'Done' : 'Select'}</button>` : ''}
     </div>
+    ${D.selMode ? `<div class="selbar"><span>${picked.length} selected${D.filter !== 'completed' ? '' : ''}</span>
+      <button class="linkbtn" id="selAll">${picked.length === shown.length ? 'Clear' : 'Select all'}</button></div>
+      <p class="hint" style="margin:-6px 0 0">Tap to pick. On a computer, shift-click picks everything in between.</p>` : ''}
     ${shown.length ? shown.map(d => {
       const [label, cls] = statusOf(d);
       const chips = (d.checks || []).map(c => `<span class="chip ${c.status === 'Yes' || c.status === 'No' ? c.status : 'NA'}">${esc(c.label)}: ${esc(c.status)}</span>`).join('');
-      return `<button class="item" data-id="${esc(d._id)}">
-        <span class="top"><strong>${esc(d.property)}</strong><span class="status ${cls}">${esc(label)}</span></span>
-        <span class="meta">${esc(d.ownerName || 'Owner not looked up yet')} · inspected ${esc(fmtShort(d.date))}</span>
+      const on = D.sel.has(d._id);
+      return `<button class="item${D.selMode ? ' selectable' : ''}${on ? ' picked' : ''}" data-id="${esc(d._id)}" ${D.selMode ? `aria-pressed="${on}"` : ''}>
+        <span class="top">${D.selMode ? `<span class="tick" aria-hidden="true">${on ? '✓' : ''}</span>` : ''}<strong>${esc(d.property)}</strong><span class="status ${cls}">${esc(label)}</span></span>
+        <span class="meta">${esc(d.ownerName || 'Owner not looked up yet')} · inspected ${esc(fmtShort(d.date))}${D.selMode && !d.checklistPdf ? ' · no checklist yet' : ''}</span>
         ${chips ? `<span class="chipsrow">${chips}</span>` : ''}</button>`;
-    }).join('') : `<section class="card empty"><p class="hint">${D.docs.length ? 'Nothing in this list.' : 'No inspections yet. Tap + New inspection to add one.'}</p></section>`}`;
+    }).join('') : `<section class="card empty"><p class="hint">${D.docs.length ? 'Nothing in this list.' : 'No inspections yet. Tap + New inspection to add one.'}</p></section>`}
+    ${D.selMode ? `<div class="dlbar"><button class="primary" id="dlBtn" ${pickedPdfs.length ? '' : 'disabled'}>Download ${pickedPdfs.length || ''} checklist${pickedPdfs.length === 1 ? '' : 's'} as one PDF</button>
+      <p class="hint" id="dlMsg">${picked.length > pickedPdfs.length ? `${picked.length - pickedPdfs.length} picked inspection${picked.length - pickedPdfs.length > 1 ? 's have' : ' has'} no checklist yet and will be skipped.` : ''}</p></div>` : ''}`;
   $('newInsp').onclick = () => { history.pushState({ view: 'inbox' }, ''); openInbox(); };
   deskEl().querySelectorAll('[data-f]').forEach(b => b.onclick = () => { D.filter = b.dataset.f; try { localStorage.setItem('desk-filter', D.filter); } catch {} renderDeskList(); });
-  deskEl().querySelectorAll('.item').forEach(b => b.onclick = () => { history.pushState({ view: 'detail', id: b.dataset.id }, ''); openDetail(b.dataset.id); });
+  if ($('selToggle')) $('selToggle').onclick = () => { D.selMode = !D.selMode; if (!D.selMode) D.sel.clear(); D.lastPick = null; renderDeskList(); };
+  if ($('selAll')) $('selAll').onclick = () => {
+    if (picked.length === shown.length) shown.forEach(d => D.sel.delete(d._id)); else shown.forEach(d => D.sel.add(d._id));
+    renderDeskList();
+  };
+  if ($('dlBtn')) $('dlBtn').onclick = () => downloadChecklists(pickedPdfs.map(id => D.docs.find(d => d._id === id)));
+  deskEl().querySelectorAll('.item').forEach((b, i) => b.onclick = e => {
+    if (!D.selMode) { history.pushState({ view: 'detail', id: b.dataset.id }, ''); openDetail(b.dataset.id); return; }
+    const id = b.dataset.id, turnOn = !D.sel.has(id);
+    if (e.shiftKey && D.lastPick != null) {
+      const [lo, hi] = [Math.min(D.lastPick, i), Math.max(D.lastPick, i)];
+      shown.slice(lo, hi + 1).forEach(d => turnOn ? D.sel.add(d._id) : D.sel.delete(d._id));
+    } else turnOn ? D.sel.add(id) : D.sel.delete(id);
+    D.lastPick = i;
+    const y = window.scrollY; renderDeskList(); window.scrollTo(0, y);
+  });
+}
+
+// One printable PDF: each picked inspection's filled checklist, oldest inspection first.
+async function downloadChecklists(docs) {
+  const btn = $('dlBtn'), msg = t => { if ($('dlMsg')) $('dlMsg').textContent = t; };
+  busy(btn, 'Building the PDF…');
+  try {
+    const { PDFDocument } = PDFLib;
+    const out = await PDFDocument.create();
+    const ordered = [...docs].sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    for (const [n, d] of ordered.entries()) {
+      msg(`Adding ${d.property} (${n + 1} of ${ordered.length})…`);
+      const r = await api('desk.image', { id: d.checklistPdf });
+      const src = await PDFDocument.load(Uint8Array.from(atob(r.data), c => c.charCodeAt(0)));
+      (await out.copyPages(src, src.getPageIndices())).forEach(pg => out.addPage(pg));
+    }
+    const bytes = await out.save({ useObjectStreams: false });
+    const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+    const a = document.createElement('a');
+    a.href = url; a.download = `inspection-checklists_${todayStr()}.pdf`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    msg(`Done: ${ordered.length} checklist${ordered.length > 1 ? 's' : ''}, ${out.getPageCount()} pages. On a phone it opens in a viewer; use Share → Print.`);
+  } catch (e) { msg('Couldn\'t build it: ' + e.message); }
+  unbusy(btn);
 }
 
 // ---------- new inspection: the Inbox screen ----------
