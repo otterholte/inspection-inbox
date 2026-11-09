@@ -1,7 +1,7 @@
 // Inspection Desk tab: open/completed inspections, the owner email draft and the evidence behind it.
 // Data lives in Drive behind the same Apps Script (actions desk.*); requests are jobs for Claude Code on the PC.
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-const RUN_HINT = 'Claude checks every 15 minutes on weekdays (7 AM–7 PM) while your PC and the Claude app are on.';
+const RUN_HINT = 'Claude starts on this within about 30 seconds while your PC is on; bigger jobs like processing a new inspection can take 10–20 minutes.';
 const REQUESTS = {
   process: 'Process the checklist and run the AppFolio audit',
   link: 'Get the Z Inspector link',
