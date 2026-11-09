@@ -654,9 +654,9 @@ function buildEmail() {
   const goAhead = (f.goAhead ?? defaultGoAhead(v.recs)).trim();
   out.push(`I'll give you a call on ${when || '[date and time]'} to go over the inspection and answer any questions.` +
     (v.call.alt ? ` I'm also available on ${fmtLong(v.call.alt)} if that works better.` : '') +
-    ` If that time doesn't work, please reply with a few better times${altDay ? ' on either of those days' : ''} and I'll reschedule.` +
-    ` If this covers everything and you don't need a call, please send me an email (at eli@thesourcepm.com - in case this is coming from a @noreply email) and let me know` +
-    (goAhead ? `, and I'll just schedule ${goAhead}.` : '.'));
+    ` If that time doesn't work, please reply with a few better times${altDay ? ' on either of those days' : ''} and I'll reschedule (please forward your response to eli@thesourcepm.com - since this is coming from an @noreply email).` +
+    ` If this covers everything and you don't need a call, please send me an email and let me know.` +
+    (goAhead ? ` I'll go ahead and schedule ${goAhead}.` : ''));
   return out.join('\n');
 }
 function defaultGoAheadFromForm() {
