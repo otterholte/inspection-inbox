@@ -80,7 +80,7 @@ function renderRecent() {
     const b = document.createElement('button');
     b.type = 'button';
     b.textContent = p;
-    b.onclick = () => { $('property').value = p; };
+    b.onclick = () => { $('property').value = p; $('property').dispatchEvent(new Event('input')); $('property').dispatchEvent(new Event('change')); };
     box.appendChild(b);
   }
 }
@@ -143,6 +143,7 @@ async function upload(blob, filename, kind, prop) {
     st.textContent = '✓ Saved'; st.className = 'pill ok';
     // Remember what was sent this visit, so "Send to Claude" can attach it to the inspection.
     sentFiles.push({ driveId: r.id, name: filename, kind, property: prop });
+    if (typeof draftUpload === 'function') draftUpload(prop, { driveId: r.id, name: filename, kind });
     renderSendCard();
     return true;
   } catch (e) {

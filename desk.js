@@ -36,6 +36,7 @@ const isDone = d => flags(d).completed ?? !!(flags(d).sent && flags(d).docs);
 const queuedCount = d => Object.values(d.requests || {}).filter(r => r.state === 'queued').length;
 function statusOf(d) {
   if (isDone(d)) return ['Completed', 'st-done'];
+  if (d.draft) return [`Draft · ${d.uploads ? d.uploads + ' file' + (d.uploads > 1 ? 's' : '') + ', ' : ''}not sent to Claude yet`, 'st-open'];
   const q = queuedCount(d);
   if (q) {
     const live = Object.values(d.requests || {}).filter(r => r.state === 'queued' && r.progress).sort((a, b) => String(b.progressAt).localeCompare(String(a.progressAt)))[0];
@@ -139,6 +140,8 @@ function renderDeskList() {
   };
   if ($('dlBtn')) $('dlBtn').onclick = () => downloadChecklists(pickedPdfs.map(id => D.docs.find(d => d._id === id)));
   deskEl().querySelectorAll('.item').forEach((b, i) => b.onclick = e => {
+    const doc = D.docs.find(d => d._id === b.dataset.id);
+    if (!D.selMode && doc?.draft) { history.pushState({ view: 'inbox' }, ''); openInbox(doc.property, doc.date); return; }
     if (!D.selMode) { history.pushState({ view: 'detail', id: b.dataset.id }, ''); openDetail(b.dataset.id); return; }
     const id = b.dataset.id, turnOn = !D.sel.has(id);
     if (e.shiftKey && D.lastPick != null) {
@@ -181,17 +184,67 @@ const todayStr = () => { const t = new Date(), z = n => String(n).padStart(2, '0
 function openInbox(prop, date) {
   stopPoll();
   D.inboxFor = prop ? { prop, date } : null;
+  D.draft = null;
   $('property').value = prop || '';
   $('inspDate').value = date || todayStr();
+  $('queue').innerHTML = '<li class="empty">Nothing uploaded yet.</li>';
   setBar(prop ? 'Add to ' + prop : 'New inspection', 'Record, upload or scan, then send it to Claude');
   showView('inbox');
   renderSendCard();
+  if (prop) loadDraft();
 }
+// ---- drafts: the Inbox saves itself to the Desk as soon as there's an address, so it can be finished on another device ----
+let draftChain = Promise.resolve();
+const draftId = () => { const p = $('property').value.trim(); return p ? slugify(p, $('inspDate').value || todayStr()) : null; };
+function draftSave(upload) {
+  const prop = $('property').value.trim(), date = $('inspDate').value || todayStr();
+  if (!prop) return draftChain;
+  draftChain = draftChain.then(async () => {
+    const id = slugify(prop, date), now = new Date().toISOString();
+    for (let tries = 0; tries < 3; tries++) {
+      let doc = null;
+      try { doc = (await api('desk.get', { slug: id })).doc; } catch {}
+      try {
+        if (!doc) {
+          await api('desk.set', { slug: id, doc: { property: prop, date, ownerName: '', steps: {}, uploads: upload ? [upload] : [],
+            draft: true, requests: {}, createdAt: now, updatedAt: now } });
+        } else if (upload && !(doc.uploads || []).some(u => u.driveId === upload.driveId)) {
+          await api('desk.update', { slug: id, ifVersion: doc._version, patch: { uploads: [...(doc.uploads || []), upload], updatedAt: now } });
+        }
+        break;
+      } catch (e) { if (!/version/i.test(e.message)) break; }
+    }
+    if (draftId() === id) await loadDraft(!!upload);
+  }).catch(() => {});
+  return draftChain;
+}
+function draftUpload(prop, upload) { if (prop === $('property').value.trim()) draftSave(upload); }
+// Shows what's already saved for this address and date (from this device or another one).
+async function loadDraft(quiet) {
+  const id = draftId(); if (!id) return;
+  let doc = null;
+  try { doc = (await api('desk.get', { slug: id })).doc; } catch {}
+  if (draftId() !== id) return;
+  D.draft = doc && doc.draft ? doc : null;
+  if (!quiet && D.draft && (D.draft.uploads || []).length) {
+    const q = $('queue'); q.innerHTML = '';
+    for (const u of D.draft.uploads) { const st = addQueueItem(u.name, KIND_ICON[u.kind] ? u.kind : 'note', D.draft.property); st.textContent = '✓ Saved'; st.className = 'pill ok'; }
+  }
+  renderSendCard();
+}
+$('property').addEventListener('change', () => { if (draftId()) draftSave(); });
+$('inspDate').addEventListener('change', () => loadDraft());
 function renderSendCard() {
   if (!$('sendBtn')) return;
   const prop = $('property').value.trim();
-  const mine = sentFiles.filter(f => f.property === prop);
+  const saved = D.draft && D.draft.property === prop ? D.draft.uploads || [] : [];
+  const mine = [...saved, ...sentFiles.filter(f => f.property === prop && !saved.some(u => u.driveId === f.driveId))];
   $('sendBtn').disabled = !prop || !mine.length;
+  $('draftNote').innerHTML = D.draft ? `Saved as a draft. You can finish it on any device from the Desk. <button class="linkbtn" id="dropDraft">Delete draft</button>` : '';
+  if ($('dropDraft')) $('dropDraft').onclick = async () => {
+    if (!confirm('Delete this draft? Files you uploaded stay in Drive.')) return;
+    try { await api('desk.deleteDraft', { slug: draftId() }); D.draft = null; history.back(); } catch (e) { $('sendMsg').textContent = e.message; }
+  };
   $('sendHint').textContent = !prop ? 'Type the property address in Step 1.'
     : mine.length ? `${mine.length} file${mine.length > 1 ? 's' : ''} ready for ${prop}. Claude reads them, looks up the owner, audits AppFolio and drafts everything.`
     : 'Add a memo, scan or note above first.';
@@ -200,17 +253,20 @@ $('property').addEventListener('input', renderSendCard);
 $('inboxBack').onclick = () => history.back();
 $('sendBtn').onclick = async () => {
   const prop = $('property').value.trim(), date = $('inspDate').value || todayStr();
-  const files = sentFiles.filter(f => f.property === prop);
-  if (!prop || !files.length) return;
+  if (!prop) return;
   $('sendBtn').disabled = true; $('sendMsg').textContent = 'Sending…';
+  await draftChain;
+  const files = sentFiles.filter(f => f.property === prop);
+  if (!files.length && !(D.draft?.uploads || []).length) { $('sendMsg').textContent = 'Add a memo, scan or note first.'; renderSendCard(); return; }
   const id = slugify(prop, date), now = new Date().toISOString();
   const uploads = files.map(({ driveId, name, kind }) => ({ driveId, name, kind }));
   try {
     let existing = null;
     try { existing = (await api('desk.get', { slug: id })).doc; } catch {}
     if (existing) {
+      const have = existing.uploads || [];
       await api('desk.update', { slug: id, ifVersion: existing._version, patch: {
-        uploads: [...(existing.uploads || []), ...uploads], updatedAt: now,
+        uploads: [...have, ...uploads.filter(u => !have.some(h => h.driveId === u.driveId))], updatedAt: now, draft: { __delete__: true },
         requests: { ...(existing.requests || {}), process: { state: 'queued', at: now } } } });
     } else {
       await api('desk.set', { slug: id, doc: { property: prop, date, ownerName: '', steps: {}, uploads,

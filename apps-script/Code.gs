@@ -39,6 +39,7 @@ function doPost(e) {
       case 'desk.putImage': return json_({ ok: true, id: imagePut_(body) });
       case 'desk.bookCall': return json_({ ok: true, ...bookCall_(body.slug) });
       case 'desk.freeSlot': return json_({ ok: true, ...freeSlot_(body.date, body.time) });
+      case 'desk.deleteDraft': return json_({ ok: true, ...deleteDraft_(body.slug) });
       case 'desk.calendarCheck': return json_({ ok: true, ...calendarCheck_() });
       case 'desk.testReminder': return json_({ ok: true, ...sendReminder_(body.slug, true) });
       default: return json_({ ok: true, ...upload_(body) });
@@ -83,9 +84,18 @@ function deskList_() {
     const d = readDoc_(f);
     // The list only needs summary fields; the page fetches the rest on open.
     out.push({ _id: f.getName().replace(/\.json$/, ''), _version: d._version, property: d.property, ownerName: d.ownerName,
-      date: d.date, steps: d.steps, requests: d.requests, checks: d.checks, checklistPdf: d.checklistPdf || null });
+      date: d.date, steps: d.steps, requests: d.requests, checks: d.checks, checklistPdf: d.checklistPdf || null,
+      draft: !!d.draft, uploads: (d.uploads || []).length });
   }
   return out;
+}
+// Only an unsent draft (the Inbox saves one as soon as an address is typed) can be removed; uploaded files stay in Drive.
+function deleteDraft_(slug) {
+  const f = docFile_(slug);
+  if (!f) return { deleted: false };
+  if (!readDoc_(f).draft) throw new Error('Only unsent drafts can be deleted');
+  f.setTrashed(true);
+  return { deleted: true };
 }
 function deskGet_(slug) {
   const f = docFile_(slug);
