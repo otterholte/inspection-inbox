@@ -4,6 +4,8 @@
 const FORM_PDF_ID = '1nLQXUh4l33cBD00bhDn8tXmD9DnzUF6a';
 const FORM_LAYOUT_ID = '18kJV9TM7d8YkvCPdenqYrWH4LKq80aPB';
 const NEVER_MARK = ['Turn in inspection sheets weekly'];
+// Eli checks these on every inspection.
+const ALWAYS_MARK = ['Location of Sprinkler'];
 // Page-2 lines that follow from the Desk's progress.
 const EMAIL_LINES = ['A link to the inspection', 'A review of the condition', 'Minimum 3 proactive', 'A date and time'];
 const UPLOAD_LINE = 'Upload the Inspection Checklist';
@@ -24,6 +26,7 @@ function checklistMarks(d) {
   if (st.email || st.sent) EMAIL_LINES.forEach(m => marks.add(m));
   if (st.docs) marks.add(UPLOAD_LINE);
   marks.add('Complete and initial');
+  ALWAYS_MARK.forEach(m => marks.add(m));
   NEVER_MARK.forEach(n => [...marks].forEach(m => { if (m.startsWith(n) || n.startsWith(m)) marks.delete(m); }));
   return [...marks];
 }
