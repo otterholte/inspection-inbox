@@ -265,8 +265,10 @@ function showPage(side) {
   slot.classList.toggle('filled', has);
   img.classList.toggle('hidden', !has); tag.classList.toggle('hidden', !has);
   if (has) img.src = pages[side].toDataURL('image/jpeg', 0.6); else img.removeAttribute('src');
-  $('sendScan').disabled = !(pages.front && pages.back);
-  $('sendScan').textContent = pages.front && pages.back ? 'Upload scan (2 pages)' : `Take the ${pages.front ? 'back' : 'front'} photo`;
+  // The front alone is enough; the back is optional.
+  const n = (pages.front ? 1 : 0) + (pages.back ? 1 : 0);
+  $('sendScan').disabled = !n;
+  $('sendScan').textContent = n ? `Upload scan (${n} page${n > 1 ? 's' : ''})` : 'Take a photo of the checklist';
 }
 for (const side of ['front', 'back']) {
   $(side + 'Img').onchange = async e => {
@@ -281,7 +283,7 @@ $('sendScan').onclick = async () => {
   const prop = property(); if (!prop) return;
   const { jsPDF } = window.jspdf;
   const pdf = new jsPDF({ unit: 'in', format: 'letter' });
-  ['front', 'back'].forEach((side, i) => {
+  ['front', 'back'].filter(side => pages[side]).forEach((side, i) => {
     const c = pages[side];
     if (i) pdf.addPage();
     const r = Math.min(8.5 / c.width, 11 / c.height);
