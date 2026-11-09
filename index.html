@@ -162,6 +162,11 @@
   .item .top { align-items: center; }
   .dlbar { position: sticky; bottom: calc(env(safe-area-inset-bottom) + 8px); background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 12px; box-shadow: var(--shadow); display: grid; gap: 6px; }
   .dlbar .hint { margin: 0; }
+  .live { display: flex; gap: 10px; align-items: flex-start; margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(0,0,0,.08); }
+  .live b { display: block; font-weight: 700; color: var(--text); }
+  .live small { color: var(--muted); }
+  .pulse-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--note); margin-top: 6px; flex: none; animation: pulse 1.4s infinite; }
+  @media (prefers-reduced-motion: reduce) { .pulse-dot { animation: none; } }
   .linkbtn { border: 0; background: none; color: var(--brand-2); font-weight: 600; padding: 0; text-align: left; }
 
   /* desk */
@@ -382,7 +387,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="app.js?v=21"></script>
-<script src="desk.js?v=24"></script>
+<script src="desk.js?v=25"></script>
 <script src="checklist.js?v=21"></script>
 </body>
 </html>

@@ -37,7 +37,10 @@ const queuedCount = d => Object.values(d.requests || {}).filter(r => r.state ===
 function statusOf(d) {
   if (isDone(d)) return ['Completed', 'st-done'];
   const q = queuedCount(d);
-  if (q) return [`Waiting on Claude (${q})`, 'st-wait'];
+  if (q) {
+    const live = Object.values(d.requests || {}).filter(r => r.state === 'queued' && r.progress).sort((a, b) => String(b.progressAt).localeCompare(String(a.progressAt)))[0];
+    return [live ? `Claude: ${live.progress}` : `Waiting on Claude (${q})`, 'st-wait'];
+  }
   const next = STEPS.find(([k]) => !flags(d)[k]);
   return [next ? 'Next: ' + next[1].split(' and ')[0] : 'Open', 'st-open'];
 }
@@ -91,7 +94,13 @@ async function deskList() {
 }
 // Select mode: tap to pick, shift-click for a range, then download the picked checklists as one PDF.
 D.sel = new Set(); D.selMode = false; D.lastPick = null;
+let listPoll = null;
 function renderDeskList() {
+  clearInterval(listPoll);
+  if (D.docs.some(queuedCount)) listPoll = setInterval(async () => {
+    if (D.current || document.hidden || deskEl().classList.contains('hidden') || D.selMode) return;
+    try { D.docs = (await api('desk.list')).docs; renderDeskList(); } catch {}
+  }, 20000);
   const shown = D.docs.filter(d => D.filter === 'all' ? true : D.filter === 'open' ? !isDone(d) : isDone(d))
     .sort((a, b) => String(b.date).localeCompare(String(a.date)));
   const counts = { open: D.docs.filter(d => !isDone(d)).length, completed: D.docs.filter(isDone).length, all: D.docs.length };
@@ -230,13 +239,21 @@ async function openDetail(id) {
       const fresh = (await api('desk.get', { slug: id })).doc;
       if (fresh._version !== D.current.data._version && !D.dirty) { D.current.data = fresh; renderDetail(true); }
     } catch {}
-  }, 20000);
+  }, 15000);
+}
+// "just now", "2 min ago": a still-moving clock shows the page is alive.
+function ago(iso) {
+  if (!iso) return '';
+  const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  return m < 1 ? 'just now' : m === 1 ? '1 min ago' : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} hr ago`;
 }
 function stopPoll() { clearInterval(D.poll); D.poll = null; }
 function reqBlock(key, label, enabled = true) {
   const r = (D.current.data.requests || {})[key];
   const queued = r?.state === 'queued';
-  return `${queued ? `<div class="waiting">Waiting for Claude: ${esc(REQUESTS[key])}. ${RUN_HINT}</div>` : ''}
+  const live = queued && r.progress
+    ? `<div class="live"><span class="pulse-dot"></span><span><b>${esc(r.progress)}</b><small>${ago(r.progressAt)}</small></span></div>` : '';
+  return `${queued ? `<div class="waiting">${live ? 'Claude is working on' : 'Waiting for Claude:'} ${esc(REQUESTS[key])}.${live ? '' : ' ' + RUN_HINT}${live}</div>` : ''}
     ${r?.state === 'done' && r.note ? `<div class="doneMsg">${esc(r.note)}</div>` : ''}
     ${r?.state === 'failed' ? `<div class="waiting">Claude couldn't finish this${r.note ? ': ' + esc(r.note) : ''}. Tap to try again.</div>` : ''}
     <button class="primary" data-req="${key}" ${queued || !enabled ? 'disabled' : ''}>${esc(label)}</button>`;
