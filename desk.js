@@ -576,7 +576,7 @@ function buildEmail() {
   out.push(`I'll give you a call on ${when || '[date and time]'} to go over the inspection and answer any questions.` +
     (v.call.alt ? ` I'm also available on ${fmtLong(v.call.alt)} if that works better.` : '') +
     ` If that time doesn't work, please reply with a few better times${altDay ? ' on either of those days' : ''} and I'll reschedule.` +
-    ` If this covers everything and you don't need a call, please reply to this email and let me know` +
+    ` If this covers everything and you don't need a call, please send me an email (at eli@thesourcepm.com - in case this is coming from a @noreply email) and let me know` +
     (goAhead ? `, and I'll just schedule ${goAhead}.` : '.'));
   return out.join('\n');
 }
