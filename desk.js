@@ -9,6 +9,7 @@ const REQUESTS = {
   email: 'Open AppFolio and draft the owner email (not sent)',
   checklist: 'Fill out and initial the 2026 checklist PDF',
   docs: 'Upload the checklist to AppFolio (tenant + property, Inspections folder)',
+  addInfo: 'Add what you told me to this inspection',
 };
 const STEPS = [
   ['processed', 'Checklist processed and AppFolio audited', 'process'],
@@ -317,6 +318,20 @@ function ago(iso) {
   return m < 1 ? 'just now' : m === 1 ? '1 min ago' : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} hr ago`;
 }
 function stopPoll() { clearInterval(D.poll); D.poll = null; }
+// "Add or fix something": anything Eli notices later or Claude got wrong, typed or dictated. Claude merges it
+// into the notes, recommendations, Z notes, email, checklist and the AppFolio locations note.
+function moreCard(d) {
+  const r = (d.requests || {}).addInfo, queued = r?.state === 'queued';
+  const live = queued && r.progress ? `<div class="live"><span class="pulse-dot"></span><span><b>${esc(r.progress)}</b><small>${ago(r.progressAt)}</small></span></div>` : '';
+  return `<section class="card"><h2>Add or fix something</h2>
+    <p class="hint">Type or dictate anything you noticed later, or anything that's wrong. Claude updates the notes, recommendations, Z Inspector notes, email, checklist and the AppFolio note to match.</p>
+    ${queued ? `<div class="waiting">${live ? 'Claude is working on' : 'Waiting for Claude:'} “${esc(r.instruction || '')}”${live ? '' : ' ' + RUN_HINT}${live}</div>` : ''}
+    ${r?.state === 'done' && r.note ? `<div class="doneMsg">${esc(r.note)}</div>` : ''}
+    ${r?.state === 'failed' ? `<div class="waiting">Claude couldn't finish this${r.note ? ': ' + esc(r.note) : ''}.</div>` : ''}
+    <textarea id="moreText" class="edit-box" placeholder="e.g. The side yard fence is leaning and could fall in a strong wind" ${queued ? 'disabled' : ''}></textarea>
+    <button class="primary" id="moreSend" ${queued ? 'disabled' : ''}>Send to Claude</button>
+  </section>`;
+}
 function reqBlock(key, label, enabled = true) {
   const r = (D.current.data.requests || {})[key];
   const queued = r?.state === 'queued';
@@ -356,6 +371,8 @@ function renderDetail(keepScroll) {
       ${d.goodCondition === false ? '<p class="warnbox">Not in good condition: issue a violation and a follow-up inspection before sending the report.</p>' : ''}
       <p class="saved" id="saved">${d.updatedAt ? 'Saved ' + new Date(d.updatedAt).toLocaleString() : ''}</p>
     </section>
+
+    ${st.processed ? moreCard(d) : ''}
 
     <section class="card"><h2>What you saw <span class="pilltag">in the email</span></h2>
       <textarea id="review" aria-label="What you saw">${esc(f.review)}</textarea>
@@ -509,6 +526,13 @@ function wireDetail() {
   };
   if ($('remStatus')) api('desk.reminderStatus').then(r => { if ($('remStatus')) $('remStatus').textContent = r.triggerOn ? '✓ The 9 AM job is on.' : '⚠ The 9 AM job is off. Tell Claude to turn it back on.'; })
     .catch(() => { if ($('remStatus')) $('remStatus').textContent = ''; });
+  if ($('moreSend')) $('moreSend').onclick = async () => {
+    const text = $('moreText').value.trim(); if (!text) { $('moreText').focus(); return; }
+    busy($('moreSend'), 'Sending…');
+    await save();
+    await patch({ requests: { ...(D.current.data.requests || {}), addInfo: { state: 'queued', at: new Date().toISOString(), instruction: text } } });
+    renderDetail(true);
+  };
   deskEl().querySelectorAll('[data-aok],[data-ano],[data-arm]').forEach(b => b.onclick = () => setAudit(b));
   if ($('logAll')) $('logAll').onclick = () => {
     const older = deskEl().querySelectorAll('[data-older]'), showing = !older[0].hidden;

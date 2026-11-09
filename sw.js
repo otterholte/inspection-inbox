@@ -1,7 +1,7 @@
 // App-shell cache so the app opens instantly from the home screen.
 // Uploads always go to the network.
-const CACHE = 'inspection-inbox-v35';
-const SHELL = ['./', 'index.html', 'app.js?v=22', 'desk.js?v=33', 'checklist.js?v=23', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png',
+const CACHE = 'inspection-inbox-v36';
+const SHELL = ['./', 'index.html', 'app.js?v=22', 'desk.js?v=34', 'checklist.js?v=23', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png',
   'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'];
 
 self.addEventListener('install', e => {
