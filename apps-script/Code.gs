@@ -40,6 +40,7 @@ function doPost(e) {
       case 'desk.bookCall': return json_({ ok: true, ...bookCall_(body.slug) });
       case 'desk.freeSlot': return json_({ ok: true, ...freeSlot_(body.date, body.time) });
       case 'desk.deleteDraft': return json_({ ok: true, ...deleteDraft_(body.slug) });
+      case 'desk.reminderStatus': return json_({ ok: true, triggerOn: ScriptApp.getProjectTriggers().some(t => t.getHandlerFunction() === 'sendFollowupReminders'), mailQuota: MailApp.getRemainingDailyQuota() });
       case 'desk.calendarCheck': return json_({ ok: true, ...calendarCheck_() });
       case 'desk.testReminder': return json_({ ok: true, ...sendReminder_(body.slug, true) });
       default: return json_({ ok: true, ...upload_(body) });
@@ -163,14 +164,15 @@ function bookCall_(slug) {
     if (existing) { ev = existing; ev.setTime(slot, end); ev.setTitle(title); ev.setDescription(description); }
     else ev = cal.createEvent(title, slot, end, { description: description, guests: work, sendInvites: true });
     ev.setColor(CalendarApp.EventColor.ORANGE);
+    const rem = reminderEvent_(doc, cal, work, slot, tz);
 
     const booked = Utilities.formatDate(slot, tz, "EEEE, MMMM d 'at' h:mm a");
     const moved = slot.getTime() !== start.getTime();
     const now = new Date().toISOString();
     const same = existing && Math.abs(existing.getStartTime().getTime() - slot.getTime()) < 60000;
     const note = (same ? 'Still on your calendar: ' : existing ? 'Moved to ' : 'On your calendar: ') + booked + (moved ? ' (your first choice was taken)' : '') +
-      '. Invite sent to ' + work + (workCal ? '; checked your work calendar for conflicts.' : '; your work calendar isn\u2019t shared with this account, so only the personal calendar was checked for conflicts.');
-    doc.call = Object.assign({}, call, { eventId: ev.getId(), booked: booked, bookedStart: slot.toISOString(),
+      '. Invite sent to ' + work + '. Reminder email and a calendar backup: ' + rem.at + (workCal ? '; checked your work calendar for conflicts.' : '; your work calendar isn\u2019t shared with this account, so only the personal calendar was checked for conflicts.');
+    doc.call = Object.assign({}, call, { eventId: ev.getId(), booked: booked, reminderEventId: rem.id, reminderAt: rem.at, bookedStart: slot.toISOString(),
       date: Utilities.formatDate(slot, tz, 'yyyy-MM-dd'), time: Utilities.formatDate(slot, tz, 'HH:mm') });
     doc.steps = Object.assign({}, doc.steps, { call: true });
     doc.requests = Object.assign({}, doc.requests, { call: { state: 'done', at: now, note: note } });
@@ -181,6 +183,21 @@ function bookCall_(slug) {
     f.setContent(JSON.stringify(doc));
     return { booked: booked, note: note, version: doc._version };
   } finally { lock.releaseLock(); }
+}
+// Backup for the morning-after reminder email: a 15-minute event at 9 AM the day after the call,
+// on the same calendars as the call, so the follow-up shows up even if the email is missed.
+function reminderEvent_(doc, cal, work, slot, tz) {
+  const day = Utilities.formatDate(new Date(slot.getTime() + 86400000), tz, 'yyyy-MM-dd');
+  const s = Utilities.parseDate(day + ' 09:00', tz, 'yyyy-MM-dd HH:mm'), e = new Date(s.getTime() + 15 * 60000);
+  const title = 'Follow-up – ' + doc.property + ': work orders needed?';
+  const now = (doc.maintenance || []).filter(i => i.when !== 'later').map(i => '- ' + i.text);
+  const description = ['After the call with ' + (doc.ownerName || 'the owner') + ', do any of these need a work order?'].concat(now.length ? now : ['- (see the Desk)'])
+    .concat(['', 'A reminder email also goes to ' + work + ' around 9 AM. Inspection Desk: ' + DESK_URL]).join('\n');
+  let ev = doc.call && doc.call.reminderEventId ? safeEvent_(cal, doc.call.reminderEventId) : null;
+  if (ev) { ev.setTime(s, e); ev.setTitle(title); ev.setDescription(description); }
+  else ev = cal.createEvent(title, s, e, { description: description, guests: work, sendInvites: true });
+  ev.setColor(CalendarApp.EventColor.GRAY);
+  return { id: ev.getId(), at: Utilities.formatDate(s, tz, "EEEE, MMMM d 'at' h:mm a") };
 }
 function firstFree_(calendars, start, ignoreId) {
   const tz = Session.getScriptTimeZone();

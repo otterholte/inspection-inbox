@@ -386,6 +386,7 @@ function renderDetail(keepScroll) {
 
     <section class="card"><h2>Follow-up call</h2>
       ${d.call?.booked ? `<div class="doneMsg">On your calendar: ${esc(d.call.booked)}</div>` : ''}
+      ${d.call?.booked ? reminderLine(d) : ''}
       <div class="grid2">
         <div><label for="callDate">Wednesday</label><input type="date" id="callDate" value="${esc(d.call?.date || nextWeekday(3, 2))}"></div>
         <div><label for="callTime">Time</label><input type="time" id="callTime" value="${esc(d.call?.time || '10:00')}"></div>
@@ -491,6 +492,8 @@ function wireDetail() {
       $('bookCall').disabled = false; $('bookCall').textContent = 'Try again';
     }
   };
+  if ($('remStatus')) api('desk.reminderStatus').then(r => { if ($('remStatus')) $('remStatus').textContent = r.triggerOn ? '✓ The 9 AM job is on.' : '⚠ The 9 AM job is off. Tell Claude to turn it back on.'; })
+    .catch(() => { if ($('remStatus')) $('remStatus').textContent = ''; });
   if ($('logAll')) $('logAll').onclick = () => {
     const older = deskEl().querySelectorAll('[data-older]'), showing = !older[0].hidden;
     older.forEach(el => { el.hidden = showing; });
@@ -603,6 +606,13 @@ function nextWeekday(weekday, minDays) {
   while (d.getDay() !== weekday) d.setDate(d.getDate() + 1);
   const z = n => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}`;
+}
+// The morning-after reminder: when it goes out, whether the 9 AM job is on, and the calendar backup.
+function reminderLine(d) {
+  if (d.followupReminderSent) return `<p class="hint">✓ Reminder email sent ${esc(fmtShort(d.followupReminderSent.slice(0, 10)))}.</p>`;
+  const at = d.call.reminderAt ? d.call.reminderAt.replace(/ at 9:00 AM$/, '') + ' around 9 AM' : 'the morning after the call';
+  return `<p class="hint" id="remLine">Reminder email: ${esc(at)} to your work email${d.steps?.sent ? '' : ' (goes out once you mark the owner email sent)'}.` +
+    `${d.call.reminderEventId ? ' Backup: a 9 AM “Follow-up – work orders needed?” event on your calendar.' : ''} <span id="remStatus">Checking the 9 AM job…</span></p>`;
 }
 function buildZ() {
   const v = readForm(), now = v.maintenance.filter(i => i.when === 'now'), later = v.maintenance.filter(i => i.when === 'later');
